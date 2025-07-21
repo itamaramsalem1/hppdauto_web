@@ -4,6 +4,7 @@ import xlrd
 from datetime import datetime
 import os
 import re
+import zipfile
 from difflib import get_close_matches
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -36,7 +37,6 @@ def match_report_to_template(report_name, template_name_map, cutoff=0.3):
     return template_name_map[match[0]] if match else None
 
 def safe_float_conversion(value, default=0.0):
-    """Safely convert a value to float"""
     try:
         if value is None or value == "":
             return default
@@ -45,28 +45,36 @@ def safe_float_conversion(value, default=0.0):
         return default
 
 def safe_cell_value(ws, cell_ref):
-    """Safely get cell value"""
     try:
         return ws[cell_ref].value
     except:
         return None
+
+def is_valid_xlsx(filepath):
+    return zipfile.is_zipfile(filepath)
+
+def is_valid_xls(filepath):
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(8)
+        return header[:2] == b'\xd0\xcf'
+    except:
+        return False
 
 def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path):
     skipped_templates = []
     skipped_reports = []
     template_entries = []
 
-    # Process template files
     for root, _, files in os.walk(templates_folder):
         for filename in files:
             filepath = os.path.join(root, filename)
-            
-            if not filename.lower().endswith(".xlsx"):
-                skipped_templates.append((filename, "Not .xlsx, skipped"))
+
+            if not filename.lower().endswith(".xlsx") or not is_valid_xlsx(filepath):
+                skipped_templates.append((filename, "Not valid .xlsx, skipped"))
                 continue
-                
+
             try:
-                # Use read_only=True to avoid memory issues and header/footer problems
                 wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
             except Exception as e:
                 skipped_templates.append((filename, f"Openpyxl error: {str(e)[:100]}"))
@@ -78,22 +86,19 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     skipped_templates.append((filename, f"No sheet named '{sheet_day}'"))
                     wb.close()
                     continue
-                    
+
                 ws = wb[sheet_day]
 
-                # Safely extract facility name
                 facility_full = safe_cell_value(ws, "D3")
                 if not facility_full:
                     skipped_templates.append((filename, f"Missing facility name in D3"))
                     wb.close()
                     continue
-                    
-                cleaned_facility = normalize_name(facility_full)
 
-                # Safely extract other values
+                cleaned_facility = normalize_name(facility_full)
                 note = safe_cell_value(ws, "E62")
                 date_cell = safe_cell_value(ws, "B11")
-                
+
                 if not date_cell:
                     skipped_templates.append((filename, f"Missing date in B11"))
                     wb.close()
@@ -108,12 +113,11 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     skipped_templates.append((filename, f"Invalid date format in B11"))
                     wb.close()
                     continue
-                
+
                 if target_date and sheet_date != datetime.strptime(target_date, "%Y-%m-%d").date():
                     wb.close()
                     continue
 
-                # Safely extract numeric values
                 census = safe_float_conversion(safe_cell_value(ws, "E27"))
                 if census <= 0:
                     skipped_templates.append((filename, f"Invalid census value: {census}"))
@@ -123,12 +127,11 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 cna_hours = safe_float_conversion(safe_cell_value(ws, "G58"))
                 nurse_e_hours = safe_float_conversion(safe_cell_value(ws, "E58"))
                 nurse_f_hours = safe_float_conversion(safe_cell_value(ws, "F58"))
-                
-                projected_cna_hppd = cna_hours / census if census > 0 else 0
-                projected_nurse_hppd = (nurse_e_hours + nurse_f_hours) / census if census > 0 else 0
+
+                projected_cna_hppd = cna_hours / census
+                projected_nurse_hppd = (nurse_e_hours + nurse_f_hours) / census
                 projected_total_hppd = projected_cna_hppd + projected_nurse_hppd
 
-                # Agency percentages
                 proj_agency_total = safe_float_conversion(safe_cell_value(ws, "L37")) * 100
                 proj_agency_nurse = safe_float_conversion(safe_cell_value(ws, "L34")) * 100
                 proj_agency_cna = safe_float_conversion(safe_cell_value(ws, "O34")) * 100
@@ -146,9 +149,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     "proj_agency_cna": proj_agency_cna,
                     "proj_agency_nurse": proj_agency_nurse
                 })
-                
+
                 wb.close()
-                
+
             except Exception as e:
                 skipped_templates.append((filename, f"Data parsing error: {str(e)[:100]}"))
                 try:
