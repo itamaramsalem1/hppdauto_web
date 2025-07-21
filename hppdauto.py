@@ -260,7 +260,28 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
             ws.column_dimensions[col_letter].width = 28
         else:
             ws.column_dimensions[col_letter].width = len(header) + 6
+    # === Add Skipped Templates Sheet ===
+    ws_skipped = wb.create_sheet(title="Skipped Templates")
+    ws_skipped.append(["File Name", "Reason"])
 
+    for filename, reason in skipped_templates:
+        ws_skipped.append([filename, reason])
+
+    # Optionally: set column widths for readability
+    ws_skipped.column_dimensions["A"].width = 40
+    ws_skipped.column_dimensions["B"].width = 50
+
+        # === Add Skipped Reports Sheet ===
+    ws_skipped_reports = wb.create_sheet(title="Skipped Reports")
+    ws_skipped_reports.append(["File Name", "Reason"])
+
+    for filename, reason in skipped_reports:
+        ws_skipped_reports.append([filename, reason])
+
+    ws_skipped_reports.column_dimensions["A"].width = 40
+    ws_skipped_reports.column_dimensions["B"].width = 50
+
+ 
     # ✅ Create a timestamped output file path
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
