@@ -26,8 +26,11 @@ def index():
         for f in report_files:
             f.save(os.path.join(reports_path, f.filename))
 
-        output_path = run_hppd_comparison_for_date(templates_path, reports_path, date, UPLOAD_FOLDER)
-        return send_file(output_path, as_attachment=True)
+        try:
+            output_path = run_hppd_comparison_for_date(templates_path, reports_path, date, UPLOAD_FOLDER)
+            return send_file(output_path, as_attachment=True)
+        except Exception as e:
+            return f"❌ Error during processing: {e}", 500
 
     return render_template("index.html")
 
