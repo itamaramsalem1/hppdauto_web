@@ -346,10 +346,31 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
             for row_data in [projected_row, actual_row, difference_row]:
                 for col_idx, col_name in enumerate(column_headers, 1):
-                    val = row_data.get(col_name, "")
+                    # Don't show facility name for Actual and Difference rows
+                    if col_name == "Facility" and row_data["Type"] in ["Actual", "Difference"]:
+                        val = ""
+                    else:
+                        val = row_data.get(col_name, "")
+                    
                     cell = ws.cell(row=current_row, column=col_idx, value=val)
                     cell.font = Font(size=14, italic=(row_data["Type"] == "Difference"))
-                    cell.fill = PatternFill("solid", fgColor="E6F4EA" if row_data["Type"] == "Projected" else "FFFFFF" if row_data["Type"] == "Actual" else "FFFACD")
+                    
+                    # Color coding for rows
+                    if row_data["Type"] == "Projected":
+                        cell.fill = PatternFill("solid", fgColor="E6F4EA")  # Light green
+                    elif row_data["Type"] == "Actual":
+                        cell.fill = PatternFill("solid", fgColor="FFFFFF")  # White
+                    elif row_data["Type"] == "Difference":
+                        # Determine color based on Total HPPD difference (negative = good = green, positive = bad = red)
+                        total_hppd_diff = difference_row.get("Total HPPD")
+                        if isinstance(total_hppd_diff, (int, float)):
+                            if total_hppd_diff < 0:
+                                cell.fill = PatternFill("solid", fgColor="C8E6C9")  # Light green for negative (under budget)
+                            else:
+                                cell.fill = PatternFill("solid", fgColor="FFCDD2")  # Light red for positive (over budget)
+                        else:
+                            cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow for no data
+                    
                     if col_name == "Date":
                         cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
                 current_row += 1
