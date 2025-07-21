@@ -1,23 +1,18 @@
-<!-- hppdauto_web/templates/index.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>HPPD Automator</title>
+    <title>HPPD Automator - Folder Upload</title>
 </head>
 <body>
-    <h1>📊 HPPD Automator</h1>
-    <form action="/" method="POST" enctype="multipart/form-data">
-        <label>Labor Templates:</label><br>
-        <input type="file" name="templates" multiple required><br><br>
+    <h1>📦 Upload ZIP of Templates and Reports</h1>
+    <form method="POST" enctype="multipart/form-data">
+        <label>Select ZIP File:</label><br>
+        <input type="file" name="data_zip" accept=".zip" required><br><br>
 
-        <label>Actual Reports:</label><br>
-        <input type="file" name="reports" multiple required><br><br>
-
-        <label>Select Date:</label><br>
+        <label>Select Target Date:</label><br>
         <input type="date" name="date" required><br><br>
 
-        <input type="submit" value="Run Analysis">
+        <input type="submit" value="Run HPPD Comparison">
     </form>
 </body>
 </html>

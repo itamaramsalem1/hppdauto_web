@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, send_file
 import os
+import zipfile
 from datetime import datetime
 from hppdauto import run_hppd_comparison_for_date
 
@@ -10,26 +11,45 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
+        zip_file = request.files.get("data_zip")
+        date_str = request.form.get("date")
+
+        if not zip_file or not date_str:
+            return "Missing ZIP file or date.", 400
+
         try:
-            template_files = request.files.getlist("templates")
-            report_files = request.files.getlist("reports")
-            date_str = request.form["date"]
             date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            return "Invalid date format.", 400
 
-            templates_path = os.path.join(UPLOAD_FOLDER, "templates")
-            reports_path = os.path.join(UPLOAD_FOLDER, "reports")
-            os.makedirs(templates_path, exist_ok=True)
-            os.makedirs(reports_path, exist_ok=True)
+        zip_path = os.path.join(UPLOAD_FOLDER, "uploaded_data.zip")
+        zip_file.save(zip_path)
 
-            for f in template_files:
-                f.save(os.path.join(templates_path, f.filename))
-            for f in report_files:
-                f.save(os.path.join(reports_path, f.filename))
+        # Clean extract path each time
+        extract_path = os.path.join(UPLOAD_FOLDER, "unzipped")
+        if os.path.exists(extract_path):
+            import shutil
+            shutil.rmtree(extract_path)
+        os.makedirs(extract_path, exist_ok=True)
 
-            output_path = run_hppd_comparison_for_date(templates_path, reports_path, date, UPLOAD_FOLDER)
-            return send_file(output_path, as_attachment=True)
-        
-        except Exception as e:
-            return f"<h2>❌ Error: {e}</h2>", 500
+        # Unzip into expected folders
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_path)
 
-    return render_template("index.html")
+        templates_path = os.path.join(extract_path, "templates")
+        reports_path = os.path.join(extract_path, "reports")
+
+        # Run the comparison
+        output_path = run_hppd_comparison_for_date(
+            templates_path,
+            reports_path,
+            date.strftime("%Y-%m-%d"),
+            UPLOAD_FOLDER
+        )
+
+        return send_file(output_path, as_attachment=True)
+
+    return render_template("index_zip.html")
+
+if __name__ == "__main__":
+    app.run(debug=True)
