@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HPPD Automator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="submit"] {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 HPPD Automator</h1>
+    <form method="POST" enctype="multipart/form-data">
+        <p>
+            <label>Labor Templates (.zip):</label><br>
+            <input type="file" name="template_zip" accept=".zip" required>
+        </p>
+        <p>
+            <label>Actual Reports (.zip):</label><br>
+            <input type="file" name="report_zip" accept=".zip" required>
+        </p>
+        <p>
+            <label>Select Date:</label><br>
+            <input type="date" name="date" required>
+        </p>
+        <input type="submit" value="Run Analysis">
+    </form>
+</body>
+</html>
