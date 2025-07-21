@@ -35,34 +35,21 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     for filename in os.listdir(templates_folder):
         filepath = os.path.join(templates_folder, filename)
-
-        # 💣 Skip non-.xlsx files
         if not filename.endswith(".xlsx"):
             skipped_templates.append((filename, "Not .xlsx, skipped"))
             continue
-
-        # ✅ Try to load the workbook
         try:
             wb = openpyxl.load_workbook(filepath, data_only=True)
         except Exception as e:
             skipped_templates.append((filename, f"Openpyxl error: {e}"))
             continue
 
-        # ✅ Get just the day number (e.g., "16") from the selected date
-        try:
-            sheet_day = str(datetime.strptime(target_date, "%Y-%m-%d").day)
-        except Exception as e:
-            skipped_templates.append((filename, f"Invalid date format: {e}"))
-            continue
-
-        # ✅ Make sure the matching sheet exists
+        sheet_day = str(datetime.strptime(target_date, "%Y-%m-%d").day)
         if sheet_day not in wb.sheetnames:
             skipped_templates.append((filename, f"No sheet named '{sheet_day}'"))
             continue
+        ws = wb[sheet_day]
 
-        ws = wb[sheet_day]  # This is now your worksheet
-
-        # ✅ Now extract data safely from that sheet
         try:
             facility_full = ws["D3"].value
             cleaned_facility = normalize_name(facility_full)
@@ -97,9 +84,8 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 "proj_agency_nurse": proj_agency_nurse
             })
         except Exception as e:
-            skipped_templates.append((filename, f"Data parsing error in sheet '{sheet_day}': {e}"))
+            skipped_templates.append((filename, f"Data parsing error: {e}"))
             continue
-
 
     results = {}
     template_map = build_template_name_map(template_entries)
@@ -164,6 +150,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
             ]
 
         except:
+            skipped_reports.append((filename, "Failed to parse report"))
             continue
 
     wb = Workbook()
@@ -206,7 +193,6 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
             projected_row = results[key][0]
             actual_row = results[key][1]
 
-            # Calculate difference row
             difference_row = {"Type": "Difference", "Facility": "", "Date": projected_row["Date"]}
             for col_name in column_headers:
                 if col_name in ("Facility", "Type", "Date"):
@@ -218,38 +204,17 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 else:
                     difference_row[col_name] = None
 
-            # Write projected row
-            for col_idx, col_name in enumerate(column_headers, 1):
-                val = projected_row.get(col_name, "")
-                cell = ws.cell(row=current_row, column=col_idx, value=val)
-                cell.font = Font(size=14)
-                cell.fill = PatternFill("solid", fgColor="E6F4EA")
-                if col_name == "Date":
-                    cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
-            current_row += 1
-
-            # Write actual row (no Facility name)
-            for col_idx, col_name in enumerate(column_headers, 1):
-                val = actual_row.get(col_name, "") if col_name != "Facility" else ""
-                cell = ws.cell(row=current_row, column=col_idx, value=val)
-                cell.font = Font(size=14)
-                cell.fill = PatternFill("solid", fgColor="FFFFFF")
-                if col_name == "Date":
-                    cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
-            current_row += 1
-
-            # Write difference row
-            for col_idx, col_name in enumerate(column_headers, 1):
-                val = difference_row.get(col_name, "")
-                cell = ws.cell(row=current_row, column=col_idx, value=val)
-                cell.font = Font(size=14, italic=True)
-                cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow
-                if col_name == "Date":
-                    cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
-            current_row += 1
+            for row_data in [projected_row, actual_row, difference_row]:
+                for col_idx, col_name in enumerate(column_headers, 1):
+                    val = row_data.get(col_name, "")
+                    cell = ws.cell(row=current_row, column=col_idx, value=val)
+                    cell.font = Font(size=14, italic=(row_data["Type"] == "Difference"))
+                    cell.fill = PatternFill("solid", fgColor="E6F4EA" if row_data["Type"] == "Projected" else "FFFFFF" if row_data["Type"] == "Actual" else "FFFACD")
+                    if col_name == "Date":
+                        cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
+                current_row += 1
 
         current_row += 2
-
 
     group1, group2, group3 = [], [], []
     for key, rows in results.items():
@@ -267,51 +232,30 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     write_section("Good HPPD & Good Split (3.0<HPPD<3.3, 2.00<CNA<2.06, RN+LPN<=1.20)", group1)
     write_section("Good HPPD & Bad Split (3.0<HPPD<3.3, CNA<2.00, RN+LPN>1.20)", group2)
     write_section("Bad HPPD & Bad Split (HPPD>3.3 | HPPD<3.0, CNA<2.00, RN+LPN>1.20)", group3)
-    
+
     for idx, header in enumerate(column_headers, 1):
         col_letter = get_column_letter(idx)
-        if header == "Date":
-            ws.column_dimensions[col_letter].width = 15
-        elif "Percentage" in header or "Agency" in header:
-            ws.column_dimensions[col_letter].width = 28
-        else:
-            ws.column_dimensions[col_letter].width = len(header) + 6
-    # === Add Skipped Templates Sheet ===
+        ws.column_dimensions[col_letter].width = 28 if "Percentage" in header else 15 if "Date" in header else len(header) + 6
+
     ws_skipped = wb.create_sheet(title="Skipped Templates")
     ws_skipped.append(["File Name", "Reason"])
-
     for filename, reason in skipped_templates:
         ws_skipped.append([filename, reason])
-
-    # Optionally: set column widths for readability
+    if not skipped_templates:
+        ws_skipped.append(["✅ No skipped templates", ""])
     ws_skipped.column_dimensions["A"].width = 40
     ws_skipped.column_dimensions["B"].width = 50
 
-        # === Add Skipped Reports Sheet ===
     ws_skipped_reports = wb.create_sheet(title="Skipped Reports")
     ws_skipped_reports.append(["File Name", "Reason"])
-
     for filename, reason in skipped_reports:
         ws_skipped_reports.append([filename, reason])
-
+    if not skipped_reports:
+        ws_skipped_reports.append(["✅ No skipped reports", ""])
     ws_skipped_reports.column_dimensions["A"].width = 40
     ws_skipped_reports.column_dimensions["B"].width = 50
 
- 
-    # ✅ Create a timestamped output file path
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
-
-    print(f"Templates parsed: {len(template_entries)}")
-    print(f"Reports parsed: {len(results)}")
-    print(f"Skipped templates: {len(skipped_templates)}")
-    print(f"Skipped reports: {len(skipped_reports)}")
-
-    print("Sheets in workbook:", wb.sheetnames)
-
-
-    # ✅ Save the workbook to that file
     wb.save(final_output_path)
-
-    # ✅ Return the full path for Flask to send
     return final_output_path
