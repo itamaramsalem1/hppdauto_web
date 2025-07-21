@@ -1,0 +1,23 @@
+<!-- hppdauto_web/templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HPPD Automator</title>
+</head>
+<body>
+    <h1>📊 HPPD Automator</h1>
+    <form action="/" method="POST" enctype="multipart/form-data">
+        <label>Labor Templates:</label><br>
+        <input type="file" name="templates" multiple required><br><br>
+
+        <label>Actual Reports:</label><br>
+        <input type="file" name="reports" multiple required><br><br>
+
+        <label>Select Date:</label><br>
+        <input type="date" name="date" required><br><br>
+
+        <input type="submit" value="Run Analysis">
+    </form>
+</body>
+</html>

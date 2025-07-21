@@ -1,0 +1,19 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+
+# Uploaded files (we don’t want user uploads stored in Git)
+uploads/
+
+# Virtual environment (local-only)
+.venv/
+
+# Output reports (local use only)
+*.xlsx
+
+# Environment variables (if using a .env file)
+.env
+
+# OS-specific
+.DS_Store  # macOS
+Thumbs.db  # Windows
