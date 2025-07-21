@@ -35,55 +35,71 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     for filename in os.listdir(templates_folder):
         filepath = os.path.join(templates_folder, filename)
+
         # 💣 Skip non-.xlsx files
         if not filename.endswith(".xlsx"):
             skipped_templates.append((filename, "Not .xlsx, skipped"))
             continue
 
-        # ✅ Safe attempt to load .xlsx using openpyxl
+        # ✅ Try to load the workbook
         try:
             wb = openpyxl.load_workbook(filepath, data_only=True)
         except Exception as e:
             skipped_templates.append((filename, f"Openpyxl error: {e}"))
             continue
 
-        # ✅ Safe extraction of facility name
+        # ✅ Get just the day number (e.g., "16") from the selected date
         try:
-            facility_full = wb["1"]["D3"].value
-            cleaned_facility = normalize_name(facility_full)
-        except Exception:
-            skipped_templates.append((filename, "Missing D3 or Sheet '1'"))
+            sheet_day = str(datetime.strptime(target_date, "%Y-%m-%d").day)
+        except Exception as e:
+            skipped_templates.append((filename, f"Invalid date format: {e}"))
             continue
 
-        for ws in wb.worksheets:
-            try:
-                note = ws["E62"].value
-                date_cell = ws["B11"].value
-                sheet_date = date_cell.date() if isinstance(date_cell, datetime) else pd.to_datetime(date_cell).date()
-                if target_date and sheet_date != datetime.strptime(target_date, "%Y-%m-%d").date():
-                    continue
-                census = float(ws["E27"].value)
-                projected_cna_hppd = float(ws["G58"].value) / census if census else None
-                projected_nurse_hppd = (float(ws["E58"].value) + float(ws["F58"].value)) / census if census else None
-                projected_total_hppd = projected_cna_hppd + projected_nurse_hppd if census else None
-                proj_agency_total = float(ws["L37"].value * 100)
-                proj_agency_nurse = float(ws["L34"].value * 100)
-                proj_agency_cna = float(ws["O34"].value * 100)
-                template_entries.append({
-                    "facility": facility_full,
-                    "cleaned_name": cleaned_facility,
-                    "date": sheet_date,
-                    "note": note,
-                    "census": census,
-                    "proj_total": projected_total_hppd,
-                    "proj_cna": projected_cna_hppd,
-                    "proj_nurse": projected_nurse_hppd,
-                    "proj_agency_total": proj_agency_total,
-                    "proj_agency_cna": proj_agency_cna,
-                    "proj_agency_nurse": proj_agency_nurse
-                })
-            except:
+        # ✅ Make sure the matching sheet exists
+        if sheet_day not in wb.sheetnames:
+            skipped_templates.append((filename, f"No sheet named '{sheet_day}'"))
+            continue
+
+        ws = wb[sheet_day]  # This is now your worksheet
+
+        # ✅ Now extract data safely from that sheet
+        try:
+            facility_full = ws["D3"].value
+            cleaned_facility = normalize_name(facility_full)
+        except Exception:
+            skipped_templates.append((filename, f"Missing D3 in sheet '{sheet_day}'"))
+            continue
+
+        try:
+            note = ws["E62"].value
+            date_cell = ws["B11"].value
+            sheet_date = date_cell.date() if isinstance(date_cell, datetime) else pd.to_datetime(date_cell).date()
+            if target_date and sheet_date != datetime.strptime(target_date, "%Y-%m-%d").date():
                 continue
+            census = float(ws["E27"].value)
+            projected_cna_hppd = float(ws["G58"].value) / census if census else None
+            projected_nurse_hppd = (float(ws["E58"].value) + float(ws["F58"].value)) / census if census else None
+            projected_total_hppd = projected_cna_hppd + projected_nurse_hppd if census else None
+            proj_agency_total = float(ws["L37"].value * 100)
+            proj_agency_nurse = float(ws["L34"].value * 100)
+            proj_agency_cna = float(ws["O34"].value * 100)
+            template_entries.append({
+                "facility": facility_full,
+                "cleaned_name": cleaned_facility,
+                "date": sheet_date,
+                "note": note,
+                "census": census,
+                "proj_total": projected_total_hppd,
+                "proj_cna": projected_cna_hppd,
+                "proj_nurse": projected_nurse_hppd,
+                "proj_agency_total": proj_agency_total,
+                "proj_agency_cna": proj_agency_cna,
+                "proj_agency_nurse": proj_agency_nurse
+            })
+        except Exception as e:
+            skipped_templates.append((filename, f"Data parsing error in sheet '{sheet_day}': {e}"))
+            continue
+
 
     results = {}
     template_map = build_template_name_map(template_entries)
