@@ -28,11 +28,22 @@ def extract_core_from_report(report_name):
 def build_template_name_map(template_entries):
     return {entry["cleaned_name"]: entry["facility"] for entry in template_entries}
 
-def match_report_to_template(report_name, template_name_map, cutoff=0.3):
+def match_report_to_template(report_name, template_name_map, cutoff=0.6):  # Increased cutoff
     core_name = extract_core_from_report(report_name)
     if not core_name:
         return None
+    
+    # Try exact match first
+    if core_name in template_name_map:
+        return template_name_map[core_name]
+    
+    # Try fuzzy matching with higher cutoff
     match = get_close_matches(core_name, list(template_name_map.keys()), n=1, cutoff=cutoff)
+    if match:
+        return template_name_map[match[0]]
+    
+    # Try with lower cutoff as fallback
+    match = get_close_matches(core_name, list(template_name_map.keys()), n=1, cutoff=0.3)
     return template_name_map[match[0]] if match else None
 
 def safe_float_conversion(value, default=0.0):
@@ -51,6 +62,16 @@ def safe_cell_value(ws, cell_ref):
     except:
         return None
 
+def is_valid_file(filename, extension):
+    """Check if file is valid (not a Mac OS hidden file or corrupt)"""
+    # Skip Mac OS hidden files
+    if filename.startswith('._'):
+        return False
+    # Check extension
+    if not filename.lower().endswith(extension):
+        return False
+    return True
+
 def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path):
     skipped_templates = []
     skipped_reports = []
@@ -61,8 +82,11 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         for filename in files:
             filepath = os.path.join(root, filename)
             
-            if not filename.lower().endswith(".xlsx"):
-                skipped_templates.append((filename, "Not .xlsx, skipped"))
+            if not is_valid_file(filename, ".xlsx"):
+                if filename.startswith('._'):
+                    skipped_templates.append((filename, "Mac OS hidden file, skipped"))
+                else:
+                    skipped_templates.append((filename, "Not .xlsx, skipped"))
                 continue
                 
             try:
@@ -110,13 +134,14 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     continue
                 
                 if target_date and sheet_date != datetime.strptime(target_date, "%Y-%m-%d").date():
+                    skipped_templates.append((filename, f"Date mismatch: sheet has {sheet_date}, looking for {target_date}"))
                     wb.close()
                     continue
 
                 # Safely extract numeric values
                 census = safe_float_conversion(safe_cell_value(ws, "E27"))
                 if census <= 0:
-                    skipped_templates.append((filename, f"Invalid census value: {census}"))
+                    skipped_templates.append((filename, f"Invalid census value: {census} (census must be > 0)"))
                     wb.close()
                     continue
 
@@ -159,11 +184,17 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     results = {}
     template_map = build_template_name_map(template_entries)
+    
+    print(f"Template facilities found: {list(template_map.values())}")
 
     # Process report files
     for root, _, files in os.walk(reports_folder):
         for filename in files:
-            if not filename.lower().endswith(".xls"):
+            if not is_valid_file(filename, ".xls"):
+                if filename.startswith('._'):
+                    skipped_reports.append((filename, "Mac OS hidden file, skipped"))
+                else:
+                    skipped_reports.append((filename, "Not .xls, skipped"))
                 continue
                 
             filepath = os.path.join(root, filename)
@@ -188,12 +219,15 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     continue
                 
                 if target_date and report_date != datetime.strptime(target_date, "%Y-%m-%d").date():
+                    skipped_reports.append((filename, f"Date mismatch: report has {report_date}, looking for {target_date}"))
                     continue
 
                 report_facility = ws.cell_value(4, 1)
                 if not report_facility:
                     skipped_reports.append((filename, "Missing facility name"))
                     continue
+
+                print(f"Trying to match report facility: '{report_facility}'")
 
                 # Safely get hours
                 try:
@@ -202,19 +236,23 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     actual_rn_hours = safe_float_conversion(ws.cell_value(11, 7))
                     actual_lpn_hours = safe_float_conversion(ws.cell_value(10, 7))
                     actual_rn_lpn_hours = actual_rn_hours + actual_lpn_hours
-                except:
-                    skipped_reports.append((filename, "Failed to extract hours data"))
+                except Exception as e:
+                    skipped_reports.append((filename, f"Failed to extract hours data: {str(e)[:50]}"))
                     continue
 
                 matched_template_name = match_report_to_template(report_facility, template_map)
                 if not matched_template_name:
-                    skipped_reports.append((filename, "No matched facility name"))
+                    # Show what we tried to match for debugging
+                    core_name = extract_core_from_report(report_facility)
+                    skipped_reports.append((filename, f"No matched facility name. Report: '{core_name}' vs Templates: {list(template_map.keys())[:3]}..."))
                     continue
+
+                print(f"Matched '{report_facility}' to '{matched_template_name}'")
 
                 candidates = [entry for entry in template_entries 
                             if entry["facility"] == matched_template_name and entry["date"] == report_date]
                 if not candidates:
-                    skipped_reports.append((filename, "No matched date in template"))
+                    skipped_reports.append((filename, f"No matched date in template. Report date: {report_date}"))
                     continue
 
                 t = candidates[0]
@@ -341,25 +379,29 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         col_letter = get_column_letter(idx)
         ws.column_dimensions[col_letter].width = 28 if "Percentage" in header else 15 if "Date" in header else len(header) + 6
 
-    # Add skipped templates sheet
+    # Add skipped templates sheet with better categorization
     ws_skipped = wb.create_sheet(title="Skipped Templates")
-    ws_skipped.append(["File Name", "Reason"])
+    ws_skipped.append(["File Name", "Reason", "Category"])
     for filename, reason in skipped_templates:
-        ws_skipped.append([filename, reason])
+        category = "Mac OS Hidden File" if "Mac OS hidden" in reason else "Invalid Data" if "Invalid" in reason else "File Error"
+        ws_skipped.append([filename, reason, category])
     if not skipped_templates:
-        ws_skipped.append(["✅ No skipped templates", ""])
+        ws_skipped.append(["✅ No skipped templates", "", ""])
     ws_skipped.column_dimensions["A"].width = 40
     ws_skipped.column_dimensions["B"].width = 50
+    ws_skipped.column_dimensions["C"].width = 20
 
-    # Add skipped reports sheet
+    # Add skipped reports sheet with better categorization
     ws_skipped_reports = wb.create_sheet(title="Skipped Reports")
-    ws_skipped_reports.append(["File Name", "Reason"])
+    ws_skipped_reports.append(["File Name", "Reason", "Category"])
     for filename, reason in skipped_reports:
-        ws_skipped_reports.append([filename, reason])
+        category = "Mac OS Hidden File" if "Mac OS hidden" in reason else "Name Matching Issue" if "No matched facility" in reason else "File Error"
+        ws_skipped_reports.append([filename, reason, category])
     if not skipped_reports:
-        ws_skipped_reports.append(["✅ No skipped reports", ""])
+        ws_skipped_reports.append(["✅ No skipped reports", "", ""])
     ws_skipped_reports.column_dimensions["A"].width = 40
     ws_skipped_reports.column_dimensions["B"].width = 50
+    ws_skipped_reports.column_dimensions["C"].width = 20
 
     # Save the file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
