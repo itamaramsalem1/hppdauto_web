@@ -251,4 +251,12 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         else:
             ws.column_dimensions[col_letter].width = len(header) + 6
 
-    wb.save(output_path)
+    # ✅ Create a timestamped output file path
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
+
+    # ✅ Save the workbook to that file
+    wb.save(final_output_path)
+
+    # ✅ Return the full path for Flask to send
+    return final_output_path
