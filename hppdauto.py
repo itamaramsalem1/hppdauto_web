@@ -395,10 +395,42 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     write_section("Good HPPD & Bad Split (3.0<HPPD<3.3, CNA<2.00, RN+LPN>1.20)", group2)
     write_section("Bad HPPD & Bad Split (HPPD>3.3 | HPPD<3.0, CNA<2.00, RN+LPN>1.20)", group3)
 
-    # Set column widths
-    for idx, header in enumerate(column_headers, 1):
-        col_letter = get_column_letter(idx)
-        ws.column_dimensions[col_letter].width = 28 if "Percentage" in header else 15 if "Date" in header else len(header) + 6
+    # Set column widths based on content
+    for col_idx, header in enumerate(column_headers, 1):
+        col_letter = get_column_letter(col_idx)
+        
+        # Start with header length
+        max_width = len(str(header))
+        
+        # Check all data in this column to find the widest content
+        for key in results.keys():
+            projected_row = results[key][0]
+            actual_row = results[key][1]
+            difference_row = {"Type": "Difference", "Facility": "", "Date": projected_row["Date"]}
+            
+            # Calculate difference values
+            for col_name in column_headers:
+                if col_name in ("Facility", "Type", "Date"):
+                    continue
+                proj_val = projected_row.get(col_name)
+                act_val = actual_row.get(col_name)
+                if isinstance(proj_val, (int, float)) and isinstance(act_val, (int, float)):
+                    difference_row[col_name] = round(proj_val - act_val, 2)
+                else:
+                    difference_row[col_name] = None
+            
+            # Check width of content in all three rows
+            for row_data in [projected_row, actual_row, difference_row]:
+                if header == "Facility" and row_data["Type"] in ["Actual", "Difference"]:
+                    content = ""
+                else:
+                    content = str(row_data.get(header, ""))
+                
+                content_width = len(content)
+                max_width = max(max_width, content_width)
+        
+        # Add some padding and set the width
+        ws.column_dimensions[col_letter].width = max_width + 2
 
     # Add skipped templates sheet with better categorization
     ws_skipped = wb.create_sheet(title="Skipped Templates")
