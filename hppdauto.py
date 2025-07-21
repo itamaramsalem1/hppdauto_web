@@ -34,15 +34,25 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     template_entries = []
 
     for filename in os.listdir(templates_folder):
-        if not filename.endswith(".xlsx"):
-            continue
         filepath = os.path.join(templates_folder, filename)
+        # 💣 Skip non-.xlsx files
+        if not filename.endswith(".xlsx"):
+            skipped_templates.append((filename, "Not .xlsx, skipped"))
+            continue
+
+        # ✅ Safe attempt to load .xlsx using openpyxl
         try:
             wb = openpyxl.load_workbook(filepath, data_only=True)
+        except Exception as e:
+            skipped_templates.append((filename, f"Openpyxl error: {e}"))
+            continue
+
+        # ✅ Safe extraction of facility name
+        try:
             facility_full = wb["1"]["D3"].value
             cleaned_facility = normalize_name(facility_full)
         except Exception:
-            skipped_templates.append((filename, "Error opening file or missing D3"))
+            skipped_templates.append((filename, "Missing D3 or Sheet '1'"))
             continue
 
         for ws in wb.worksheets:
