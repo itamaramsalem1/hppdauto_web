@@ -286,6 +286,14 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
 
+    print(f"Templates parsed: {len(template_entries)}")
+    print(f"Reports parsed: {len(results)}")
+    print(f"Skipped templates: {len(skipped_templates)}")
+    print(f"Skipped reports: {len(skipped_reports)}")
+
+    print("Sheets in workbook:", wb.sheetnames)
+
+
     # ✅ Save the workbook to that file
     wb.save(final_output_path)
 
