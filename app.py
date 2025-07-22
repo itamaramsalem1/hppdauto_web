@@ -20,6 +20,12 @@ def index():
             report_zip = request.files.get("report_zip")
             date_str = request.form.get("date")
             progress_id = request.form.get("progress_id")
+            
+            print("DEBUG: Upload check")
+            print("template_zip:", template_zip)
+            print("report_zip:", report_zip)
+            print("date_str:", date_str)
+            print("progress_id:", progress_id)
 
             if not template_zip or not report_zip or not date_str or not progress_id:
                 return jsonify({"error": "Missing required files, date, or progress ID"}), 400
