@@ -40,6 +40,7 @@ def index():
                         print(f"[{progress_id}] {pct}% - {msg}")
                         progress_store[progress_id] = {"percent": pct, "status": msg, "completed": False, "file_path": None}
 
+                    print(f"[{progress_id}] Preparing temp directories...")
                     with tempfile.TemporaryDirectory() as temp_dir:
                         upload_folder = os.path.join(temp_dir, "uploads")
                         os.makedirs(upload_folder, exist_ok=True)
@@ -51,6 +52,7 @@ def index():
                                 zip_ref.extractall(template_path)
                         except Exception as e:
                             progress_store[progress_id] = {"percent": 0, "status": f"Error extracting template zip: {str(e)}", "completed": True, "file_path": None}
+                            print(f"[{progress_id}] Template extraction failed: {e}")
                             return
 
                         report_path = os.path.join(upload_folder, "reports")
@@ -60,9 +62,11 @@ def index():
                                 zip_ref.extractall(report_path)
                         except Exception as e:
                             progress_store[progress_id] = {"percent": 0, "status": f"Error extracting report zip: {str(e)}", "completed": True, "file_path": None}
+                            print(f"[{progress_id}] Report extraction failed: {e}")
                             return
 
                         try:
+                            print(f"[{progress_id}] Starting run_hppd_comparison_for_date")
                             output_path = run_hppd_comparison_for_date(
                                 template_path,
                                 report_path,
@@ -70,6 +74,7 @@ def index():
                                 upload_folder,
                                 progress_callback=update_progress
                             )
+                            print(f"[{progress_id}] run_hppd_comparison_for_date finished")
 
                             permanent_path = os.path.join("/tmp", f"hppd_output_{progress_id}.xlsx")
                             shutil.copy2(output_path, permanent_path)
@@ -80,6 +85,7 @@ def index():
                                 "completed": True,
                                 "file_path": permanent_path
                             }
+                            print(f"[{progress_id}] File saved to {permanent_path}")
 
                         except Exception as e:
                             progress_store[progress_id] = {
@@ -88,6 +94,7 @@ def index():
                                 "completed": True,
                                 "file_path": None
                             }
+                            print(f"[{progress_id}] ERROR in processing: {e}")
 
                 except Exception as e:
                     progress_store[progress_id] = {
@@ -96,6 +103,7 @@ def index():
                         "completed": True,
                         "file_path": None
                     }
+                    print(f"[{progress_id}] UNEXPECTED error: {e}")
 
             print(f"[{progress_id}] Launching thread...")
             thread = threading.Thread(target=process_files)
