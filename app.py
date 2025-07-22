@@ -20,7 +20,7 @@ def index():
             report_zip = request.files.get("report_zip")
             date_str = request.form.get("date")
             progress_id = request.form.get("progress_id")
-            
+
             print("DEBUG: Upload check")
             print("template_zip:", template_zip)
             print("report_zip:", report_zip)
@@ -32,24 +32,20 @@ def index():
 
             date = datetime.strptime(date_str, "%Y-%m-%d")
 
-            # Initialize progress
             progress_store[progress_id] = {"percent": 0, "status": "Initializing...", "completed": False, "file_path": None}
 
             def process_files():
                 try:
                     def update_progress(pct, msg):
-                        print(f"[{progress_id}] {pct}% - {msg}")  # Debug logging
+                        print(f"[{progress_id}] {pct}% - {msg}")
                         progress_store[progress_id] = {"percent": pct, "status": msg, "completed": False, "file_path": None}
 
-                    # Create temporary directories
                     with tempfile.TemporaryDirectory() as temp_dir:
                         upload_folder = os.path.join(temp_dir, "uploads")
                         os.makedirs(upload_folder, exist_ok=True)
 
-                        # Save and extract the templates zip
                         template_path = os.path.join(upload_folder, "templates")
                         os.makedirs(template_path, exist_ok=True)
-
                         try:
                             with zipfile.ZipFile(template_zip, 'r') as zip_ref:
                                 zip_ref.extractall(template_path)
@@ -57,10 +53,8 @@ def index():
                             progress_store[progress_id] = {"percent": 0, "status": f"Error extracting template zip: {str(e)}", "completed": True, "file_path": None}
                             return
 
-                        # Save and extract the reports zip
                         report_path = os.path.join(upload_folder, "reports")
                         os.makedirs(report_path, exist_ok=True)
-
                         try:
                             with zipfile.ZipFile(report_zip, 'r') as zip_ref:
                                 zip_ref.extractall(report_path)
@@ -68,7 +62,6 @@ def index():
                             progress_store[progress_id] = {"percent": 0, "status": f"Error extracting report zip: {str(e)}", "completed": True, "file_path": None}
                             return
 
-                        # Run the analysis
                         try:
                             output_path = run_hppd_comparison_for_date(
                                 template_path,
@@ -78,7 +71,6 @@ def index():
                                 progress_callback=update_progress
                             )
 
-                            # Copy the file to a permanent location
                             permanent_path = os.path.join("/tmp", f"hppd_output_{progress_id}.xlsx")
                             shutil.copy2(output_path, permanent_path)
 
@@ -105,13 +97,15 @@ def index():
                         "file_path": None
                     }
 
-            # Start processing in a separate thread
+            print(f"[{progress_id}] Launching thread...")
             thread = threading.Thread(target=process_files)
             thread.start()
+            print(f"[{progress_id}] Thread launched successfully.")
 
             return jsonify({"status": "started", "progress_id": progress_id})
 
         except Exception as e:
+            print("FATAL ERROR in / route:", str(e))
             return jsonify({"error": f"Unexpected server error: {str(e)}"}), 500
 
     return render_template("index_zip.html")
