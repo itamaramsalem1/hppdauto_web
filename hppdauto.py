@@ -75,6 +75,15 @@ def safe_cell_value(ws, cell_ref):
     except:
         return None
 
+def safe_xlrd_cell_value(ws, row, col):
+    """Safely get cell value from xlrd worksheet"""
+    try:
+        if ws.nrows > row and ws.ncols > col:
+            return ws.cell_value(row, col)
+        return None
+    except:
+        return None
+
 def is_valid_file(filename, extension):
     """Check if file is valid (not a Mac OS hidden file or corrupt)"""
     if filename.startswith('._'):
@@ -82,6 +91,134 @@ def is_valid_file(filename, extension):
     if not filename.lower().endswith(extension):
         return False
     return True
+
+def extract_agency_cna_rnlpn_from_sheet2(ws2):
+    """
+    Extract agency staffing hours for CNAs and RN+LPNs from Sheet2.
+    
+    Args:
+        ws2: xlrd worksheet object for Sheet2
+        
+    Returns:
+        dict: {
+            'agency_cna_hours': float,
+            'agency_rnlpn_hours': float,
+            'agency_total_hours': float
+        }
+    """
+    agency_cna_hours = 0.0
+    agency_rnlpn_hours = 0.0
+    
+    current_block_type = None  # 'agency_cna', 'agency_rn', 'agency_lpn', or None
+    
+    # Start scanning from row 11 (index 10) downward
+    for row_idx in range(10, ws2.nrows):
+        try:
+            # Get value from column A (index 0)
+            cell_value = ws2.cell_value(row_idx, 0)
+            
+            # Skip empty cells
+            if not cell_value or str(cell_value).strip() == "":
+                continue
+                
+            cell_str = str(cell_value).strip().upper()
+            
+            # Check if this is a header row (contains forward slashes)
+            if '/' in cell_str:
+                # Reset current block type
+                current_block_type = None
+                
+                # Parse the header pattern: e.g., "806/AGY/.../CNA"
+                parts = cell_str.split('/')
+                
+                # Check if this is an agency block (contains 'AGY')
+                is_agency = any('AGY' in part for part in parts)
+                
+                if is_agency and len(parts) > 0:
+                    # Get the last part to determine staff type
+                    last_part = parts[-1].strip()
+                    
+                    if 'CNA' in last_part:
+                        current_block_type = 'agency_cna'
+                    elif 'RN' in last_part:
+                        current_block_type = 'agency_rn'
+                    elif 'LPN' in last_part:
+                        current_block_type = 'agency_lpn'
+            
+            else:
+                # This is a data row - extract hours from column M (index 12)
+                if current_block_type and ws2.ncols > 12:  # Make sure column M exists
+                    try:
+                        hours_value = ws2.cell_value(row_idx, 12)  # Column M
+                        hours = safe_float_conversion(hours_value)
+                        
+                        if current_block_type == 'agency_cna':
+                            agency_cna_hours += hours
+                        elif current_block_type in ['agency_rn', 'agency_lpn']:
+                            agency_rnlpn_hours += hours
+                            
+                    except (ValueError, TypeError):
+                        # Skip rows with invalid hour values
+                        continue
+                        
+        except Exception:
+            # Skip problematic rows
+            continue
+    
+    return {
+        'agency_cna_hours': agency_cna_hours,
+        'agency_rnlpn_hours': agency_rnlpn_hours,
+        'agency_total_hours': agency_cna_hours + agency_rnlpn_hours
+    }
+
+def compute_agency_percentages(ws3, agency_data):
+    """
+    Compute agency staffing percentages using Sheet3 total hours data.
+    
+    Args:
+        ws3: xlrd worksheet object for Sheet3
+        agency_data: dict from extract_agency_cna_rnlpn_from_sheet2()
+        
+    Returns:
+        dict: {
+            'actual_agency_cna_pct': float,
+            'actual_agency_nurse_pct': float, 
+            'actual_agency_total_pct': float,
+            'actual_cna_hours': float,
+            'actual_rn_hours': float,
+            'actual_lpn_hours': float
+        }
+    """
+    # Extract total hours from Sheet3
+    # H13 (row 12, col 7) → actual total CNA hours
+    # H12 (row 11, col 7) → LPN hours  
+    # H11 (row 10, col 7) → RN hours
+    actual_cna_hours = safe_float_conversion(safe_xlrd_cell_value(ws3, 12, 7))
+    actual_lpn_hours = safe_float_conversion(safe_xlrd_cell_value(ws3, 11, 7))
+    actual_rn_hours = safe_float_conversion(safe_xlrd_cell_value(ws3, 10, 7))
+    
+    # Calculate total nurse hours (RN + LPN)
+    actual_rnlpn_hours = actual_rn_hours + actual_lpn_hours
+    actual_total_hours = actual_cna_hours + actual_rnlpn_hours
+    
+    # Get agency hours from the input data
+    agency_cna_hours = agency_data['agency_cna_hours']
+    agency_rnlpn_hours = agency_data['agency_rnlpn_hours']
+    agency_total_hours = agency_data['agency_total_hours']
+    
+    # Calculate percentages (handle divide-by-zero safely)
+    actual_agency_cna_pct = (agency_cna_hours / actual_cna_hours * 100) if actual_cna_hours > 0 else 0.0
+    actual_agency_nurse_pct = (agency_rnlpn_hours / actual_rnlpn_hours * 100) if actual_rnlpn_hours > 0 else 0.0
+    actual_agency_total_pct = (agency_total_hours / actual_total_hours * 100) if actual_total_hours > 0 else 0.0
+    
+    return {
+        'actual_agency_cna_pct': round(actual_agency_cna_pct, 2),
+        'actual_agency_nurse_pct': round(actual_agency_nurse_pct, 2),
+        'actual_agency_total_pct': round(actual_agency_total_pct, 2),
+        'actual_cna_hours': actual_cna_hours,
+        'actual_rn_hours': actual_rn_hours,
+        'actual_lpn_hours': actual_lpn_hours
+    }
 
 def process_template_file(args):
     """Process a single template file - for parallel processing"""
@@ -192,14 +329,19 @@ def process_report_file(args):
     
     try:
         wb = xlrd.open_workbook(filepath)
+        
+        # Check for required sheets
         if "Sheet3" not in wb.sheet_names():
             return None, (filename, "No Sheet3 found")
+        if "Sheet2" not in wb.sheet_names():
+            return None, (filename, "No Sheet2 found")
             
-        ws = wb.sheet_by_name("Sheet3")
+        ws3 = wb.sheet_by_name("Sheet3")
+        ws2 = wb.sheet_by_name("Sheet2")
         
         # Get date
         try:
-            raw_date = ws.cell_value(3, 1)
+            raw_date = ws3.cell_value(3, 1)
             if isinstance(raw_date, float):
                 report_date = datetime(*xlrd.xldate_as_tuple(raw_date, wb.datemode)).date()
             else:
@@ -210,19 +352,26 @@ def process_report_file(args):
         if target_date and report_date != datetime.strptime(target_date, "%Y-%m-%d").date():
             return None, (filename, f"Date mismatch: report has {report_date}, looking for {target_date}")
 
-        report_facility = ws.cell_value(4, 1)
+        report_facility = ws3.cell_value(4, 1)
         if not report_facility:
             return None, (filename, "Missing facility name")
 
-        # Get hours data
+        # Get hours data from Sheet3
         try:
-            actual_hours = safe_float_conversion(ws.cell_value(13, 7))
-            actual_cna_hours = safe_float_conversion(ws.cell_value(12, 7))
-            actual_rn_hours = safe_float_conversion(ws.cell_value(11, 7))
-            actual_lpn_hours = safe_float_conversion(ws.cell_value(10, 7))
+            actual_hours = safe_float_conversion(ws3.cell_value(13, 7))
+            actual_cna_hours = safe_float_conversion(ws3.cell_value(12, 7))
+            actual_rn_hours = safe_float_conversion(ws3.cell_value(11, 7))
+            actual_lpn_hours = safe_float_conversion(ws3.cell_value(10, 7))
             actual_rn_lpn_hours = actual_rn_hours + actual_lpn_hours
         except Exception as e:
             return None, (filename, f"Failed to extract hours data: {str(e)[:50]}")
+
+        # Extract agency data from Sheet2
+        try:
+            agency_data = extract_agency_cna_rnlpn_from_sheet2(ws2)
+            agency_percentages = compute_agency_percentages(ws3, agency_data)
+        except Exception as e:
+            return None, (filename, f"Failed to extract agency data: {str(e)[:50]}")
 
         matched_template_name = match_report_to_template(report_facility, template_map)
         if not matched_template_name:
@@ -236,7 +385,12 @@ def process_report_file(args):
             "report_date": report_date,
             "actual_hours": actual_hours,
             "actual_cna_hours": actual_cna_hours,
-            "actual_rn_lpn_hours": actual_rn_lpn_hours
+            "actual_rn_lpn_hours": actual_rn_lpn_hours,
+            
+            # New agency data
+            "actual_agency_cna_pct": agency_percentages['actual_agency_cna_pct'],
+            "actual_agency_nurse_pct": agency_percentages['actual_agency_nurse_pct'],
+            "actual_agency_total_pct": agency_percentages['actual_agency_total_pct']
         }
         
         return report_data, None
@@ -330,6 +484,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 "Projected CNA Agency Percentage": round(t["proj_agency_cna"], 2),
                 "Projected RN+LPN Agency Percentage": round(t["proj_agency_nurse"], 2),
                 "Projected Total Agency Percentage": round(t["proj_agency_total"], 2),
+                "Actual CNA Agency Percentage": None,
+                "Actual RN+LPN Agency Percentage": None,
+                "Actual Total Agency Percentage": None,
                 "Notes": t.get("note", ""),
                 "Date": report_data["report_date"]
             },
@@ -342,6 +499,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 "Projected CNA Agency Percentage": None,
                 "Projected RN+LPN Agency Percentage": None,
                 "Projected Total Agency Percentage": None,
+                "Actual CNA Agency Percentage": report_data["actual_agency_cna_pct"],
+                "Actual RN+LPN Agency Percentage": report_data["actual_agency_nurse_pct"],
+                "Actual Total Agency Percentage": report_data["actual_agency_total_pct"],
                 "Notes": t.get("note", ""),
                 "Date": report_data["report_date"]
             }
@@ -355,7 +515,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     column_headers = [
         "Facility", "Type", "Total HPPD", "CNA HPPD", "RN+LPN HPPD",
         "Projected CNA Agency Percentage", "Projected RN+LPN Agency Percentage",
-        "Projected Total Agency Percentage", "Notes", "Date"
+        "Projected Total Agency Percentage", "Actual CNA Agency Percentage",
+        "Actual RN+LPN Agency Percentage", "Actual Total Agency Percentage", 
+        "Notes", "Date"
     ]
     
     # Initialize column widths with header lengths
