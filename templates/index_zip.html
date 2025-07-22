@@ -8,7 +8,7 @@
   <style>
     body { background-color: #f8f9fa; }
     .card { max-width: 600px; margin: 50px auto; }
-    #progressBar { height: 30px; }
+    #progressBar { height: 30px; transition: width 0.5s ease; }
   </style>
 </head>
 <body>
@@ -33,12 +33,12 @@
       </div>
     </form>
 
-    <div id="progress-container" style="display:none; margin-top: 20px;">
+    <div id="progress-container" class="mt-4" style="display:block;">
       <div class="progress mb-3">
         <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
-             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+             role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
       </div>
-      <p id="progressStatus" class="text-center">Starting...</p>
+      <p id="progressStatus" class="text-center">Waiting to start...</p>
       <div id="downloadSection" style="display:none;" class="text-center mt-3">
         <button id="downloadButton" class="btn btn-success">📥 Download Results</button>
       </div>
@@ -96,22 +96,30 @@
   });
 
   function pollProgress(progressId) {
+    let retries = 0;
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`/progress/${progressId}`);
         const data = await response.json();
 
-        updateProgress(data.percent, data.status);
+        if (data.percent !== undefined) {
+          updateProgress(data.percent, data.status);
+        }
 
         if (data.completed) {
           clearInterval(interval);
-
           if (data.file_path) {
             downloadSection.style.display = 'block';
             downloadButton.onclick = () => downloadFile(progressId);
           } else {
             resetForm();
           }
+        }
+
+        if (++retries > 600) {
+          clearInterval(interval);
+          updateProgress(0, "❌ Timed out.");
+          resetForm();
         }
       } catch (error) {
         console.error('Error polling progress:', error);
@@ -136,15 +144,12 @@
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
     setTimeout(() => resetForm(), 1000);
   }
 
   function resetForm() {
     runButton.disabled = false;
     runButton.textContent = 'Run Analysis';
-    progressContainer.style.display = 'none';
-    downloadSection.style.display = 'none';
     currentProgressId = null;
   }
 </script>
