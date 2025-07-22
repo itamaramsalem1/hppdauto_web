@@ -440,16 +440,18 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     elif row_data["Type"] == "Actual":
                         cell.fill = PatternFill("solid", fgColor="FFFFFF")  # White
                     elif row_data["Type"] == "Difference":
-                        # Determine color based on Total HPPD difference (negative = good = green, positive = bad = red)
-                        total_hppd_diff = difference_row.get("Total HPPD")
-                        if isinstance(total_hppd_diff, (int, float)):
-                            if total_hppd_diff < 0:
-                                cell.fill = PatternFill("solid", fgColor="C8E6C9")  # Light green for negative (under budget)
+                        # Only apply red/green/yellow fill to specific columns
+                        if col_name in ("Total HPPD", "CNA HPPD", "RN+LPN HPPD"):
+                            diff_val = difference_row.get(col_name)
+                            if isinstance(diff_val, (int, float)):
+                                if diff_val < 0:
+                                    cell.fill = PatternFill("solid", fgColor="C8E6C9")  # Light green
+                                else:
+                                    cell.fill = PatternFill("solid", fgColor="FFCDD2")  # Light red
                             else:
-                                cell.fill = PatternFill("solid", fgColor="FFCDD2")  # Light red for positive (over budget)
+                                cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow
                         else:
-                            cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow for no data
-                    
+                            cell.fill = PatternFill("solid", fgColor="FFFFFF")  # No fill for other columns
                     if col_name == "Date":
                         cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
                 current_row += 1
