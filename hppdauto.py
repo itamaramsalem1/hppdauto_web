@@ -591,13 +591,17 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     cell.font = Font(size=14, italic=(row_data["Type"] == "Difference"))
                     
                     # Color coding for rows
+                    # Color coding for rows
                     if row_data["Type"] == "Projected":
                         cell.fill = PatternFill("solid", fgColor="D1CFCF")  # Light grey
                     elif row_data["Type"] == "Actual":
                         cell.fill = PatternFill("solid", fgColor="FFFFFF")  # White
                     elif row_data["Type"] == "Difference":
-                        # Only apply red/green/yellow fill to specific columns
-                        if col_name in ("Total HPPD", "CNA HPPD", "RN+LPN HPPD"):
+                        red_green_cols = (
+                            "Total HPPD", "CNA HPPD", "RN+LPN HPPD",
+                            "CNA Agency %", "RN+LPN Agency %", "Total Agency %"
+                        )
+                        if col_name in red_green_cols:
                             diff_val = difference_row.get(col_name)
                             if isinstance(diff_val, (int, float)):
                                 if diff_val < 0:
@@ -605,7 +609,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                                 else:
                                     cell.fill = PatternFill("solid", fgColor="FFCDD2")  # Light red
                             else:
-                                cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow
+                                cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow for missing data
                         else:
                             cell.fill = PatternFill("solid", fgColor="FFFFFF")  # No fill for other columns
                     if col_name == "Date":
