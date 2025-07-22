@@ -1,0 +1,19 @@
+# render.yaml for faster and correct Render deployment
+services:
+  - type: web
+    name: hppd-automator
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PORT
+        value: 10000
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - app.py
+        - hppdauto.py
+        - index_zip.html
+        - requirements.txt
