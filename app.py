@@ -16,21 +16,27 @@ progress_store = {}  # In-memory store for progress tracking
 def index():
     if request.method == "POST":
         try:
-            template_zip = request.files.get("template_zip")
-            report_zip = request.files.get("report_zip")
+            template_file = request.files.get("template_zip")
+            report_file = request.files.get("report_zip")
             date_str = request.form.get("date")
             progress_id = request.form.get("progress_id")
 
             print("DEBUG: Upload check")
-            print("template_zip:", template_zip)
-            print("report_zip:", report_zip)
+            print("template_file:", template_file)
+            print("report_file:", report_file)
             print("date_str:", date_str)
             print("progress_id:", progress_id)
 
-            if not template_zip or not report_zip or not date_str or not progress_id:
+            if not template_file or not report_file or not date_str or not progress_id:
                 return jsonify({"error": "Missing required files, date, or progress ID"}), 400
 
             date = datetime.strptime(date_str, "%Y-%m-%d")
+
+            # Save uploaded files to disk immediately
+            temp_template_path = os.path.join("/tmp", f"template_{uuid4().hex}.zip")
+            temp_report_path = os.path.join("/tmp", f"report_{uuid4().hex}.zip")
+            template_file.save(temp_template_path)
+            report_file.save(temp_report_path)
 
             progress_store[progress_id] = {"percent": 0, "status": "Initializing...", "completed": False, "file_path": None}
 
@@ -48,7 +54,7 @@ def index():
                         template_path = os.path.join(upload_folder, "templates")
                         os.makedirs(template_path, exist_ok=True)
                         try:
-                            with zipfile.ZipFile(template_zip, 'r') as zip_ref:
+                            with zipfile.ZipFile(temp_template_path, 'r') as zip_ref:
                                 zip_ref.extractall(template_path)
                         except Exception as e:
                             progress_store[progress_id] = {"percent": 0, "status": f"Error extracting template zip: {str(e)}", "completed": True, "file_path": None}
@@ -58,7 +64,7 @@ def index():
                         report_path = os.path.join(upload_folder, "reports")
                         os.makedirs(report_path, exist_ok=True)
                         try:
-                            with zipfile.ZipFile(report_zip, 'r') as zip_ref:
+                            with zipfile.ZipFile(temp_report_path, 'r') as zip_ref:
                                 zip_ref.extractall(report_path)
                         except Exception as e:
                             progress_store[progress_id] = {"percent": 0, "status": f"Error extracting report zip: {str(e)}", "completed": True, "file_path": None}
