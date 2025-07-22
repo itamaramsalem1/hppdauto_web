@@ -398,9 +398,15 @@ def process_report_file(args):
     except Exception as e:
         return None, (filename, f"Failed to parse report: {str(e)[:100]}")
 
-def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path):
+def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path, progress_callback=None):
     print("Starting HPPD comparison...")
     
+    # helper for updating progress
+    def progress(pct, msg):
+        if progress_callback:
+            progress_callback(pct, msg)
+
+    progress(5, "Collecting template files...")
     # Collect all template files
     template_files = []
     for root, _, files in os.walk(templates_folder):
@@ -414,6 +420,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     template_entries = []
     skipped_templates = []
     
+    progress(15, "Processing template files...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results = executor.map(process_template_file, template_files)
         
@@ -425,9 +432,11 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     print(f"Successfully processed {len(template_entries)} templates, skipped {len(skipped_templates)}")
     
+    progress(30, "Building template map...")
     # Build template map once
     template_map = build_template_name_map(template_entries)
     
+    progress(40, "Collecting report files...")
     # Collect all report files
     report_files = []
     for root, _, files in os.walk(reports_folder):
@@ -441,6 +450,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     report_data_list = []
     skipped_reports = []
     
+    progress(50, "Processing report files...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         results = executor.map(process_report_file, report_files)
         
@@ -456,6 +466,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     results = {}
     template_lookup = {entry["facility"]: entry for entry in template_entries}
     
+    progress(65, "Matching reports to templates...")
     for report_data in report_data_list:
         # Find matching template
         candidates = [entry for entry in template_entries 
@@ -545,7 +556,8 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 # Make sure we use the maximum of header length and content length
                 content_width = len(content)
                 column_widths[header] = max(column_widths[header], content_width)
-
+    
+    progress(80, "Generating Excel output...")	
     # Create output Excel file
     wb = Workbook()
     ws = wb.active
@@ -671,5 +683,6 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
     wb.save(final_output_path)
     
+    progress(100, "✅ Comparison complete!")
     print("Excel file created successfully!")
     return final_output_path

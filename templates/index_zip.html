@@ -1,51 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>HPPD Automator</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .card {
-            max-width: 600px;
-            margin: 50px auto;
-        }
-        h1 {
-            font-size: 2rem;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>HPPD Automator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f8f9fa;
+    }
+    .card {
+      max-width: 600px;
+      margin: 50px auto;
+    }
+    h1 {
+      font-size: 2rem;
+    }
+  </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="card shadow-sm p-4">
-        <h1 class="mb-4 text-center">📊 HPPD Automator</h1>
-        <form method="POST" enctype="multipart/form-data">
-            <div class="mb-3">
-                <label for="template_zip" class="form-label">Labor Templates (.zip)</label>
-                <input class="form-control" type="file" id="template_zip" name="template_zip" accept=".zip" required>
-            </div>
-            <div class="mb-3">
-                <label for="report_zip" class="form-label">Actual Reports (.zip)</label>
-                <input class="form-control" type="file" id="report_zip" name="report_zip" accept=".zip" required>
-            </div>
-            <div class="mb-3">
-                <label for="date" class="form-label">Select Date</label>
-                <input class="form-control" type="date" id="date" name="date" required>
-            </div>
-            <div class="d-grid">
-                <button type="submit" class="btn btn-primary">Run Analysis</button>
-            </div>
-        </form>
+  <div class="card shadow-sm p-4">
+    <h1 class="mb-4 text-center">📊 HPPD Automator</h1>
+    <form id="uploadForm" method="POST" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label for="template_zip" class="form-label">Labor Templates (.zip)</label>
+        <input class="form-control" type="file" id="template_zip" name="template_zip" accept=".zip" required>
+      </div>
+      <div class="mb-3">
+        <label for="report_zip" class="form-label">Actual Reports (.zip)</label>
+        <input class="form-control" type="file" id="report_zip" name="report_zip" accept=".zip" required>
+      </div>
+      <div class="mb-3">
+        <label for="date" class="form-label">Select Date</label>
+        <input class="form-control" type="date" id="date" name="date" required>
+      </div>
+      <div class="d-grid">
+        <button type="submit" class="btn btn-primary">Run Analysis</button>
+      </div>
+    </form>
+
+    <div id="progress-container" style="display:none; margin-top: 20px;">
+      <progress id="progressBar" value="0" max="100" class="form-range w-100"></progress>
+      <p id="progressStatus" class="text-center mt-2">Starting...</p>
     </div>
+  </div>
 </div>
 
-<!-- Optional: Bootstrap JS for future features -->
+<!-- Optional: Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  const form = document.getElementById('uploadForm');
+  const progressBar = document.getElementById('progressBar');
+  const progressStatus = document.getElementById('progressStatus');
+  const progressContainer = document.getElementById('progress-container');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const progressId = crypto.randomUUID();
+    const formData = new FormData(form);
+    formData.append("progress_id", progressId);
+
+    progressContainer.style.display = 'block';
+    progressBar.value = 0;
+    progressStatus.textContent = 'Uploading...';
+
+    // Poll for progress updates
+    const pollInterval = setInterval(async () => {
+      const res = await fetch(`/progress/${progressId}`);
+      const data = await res.json();
+      progressBar.value = data.percent;
+      progressStatus.textContent = data.status;
+
+      if (data.percent >= 100) {
+        clearInterval(pollInterval);
+      }
+    }, 1000);
+
+    // Submit the form
+    const response = await fetch("/", {
+      method: "POST",
+      body: formData
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "HPPD_Comparison_Output.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      const text = await response.text();
+      alert("Error: " + text);
+    }
+  });
+</script>
 
 </body>
 </html>
