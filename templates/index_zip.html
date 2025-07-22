@@ -17,6 +17,9 @@
     h1 {
       font-size: 2rem;
     }
+    #progressBar {
+      height: 30px;
+    }
   </style>
 </head>
 <body>
@@ -38,13 +41,21 @@
         <input class="form-control" type="date" id="date" name="date" required>
       </div>
       <div class="d-grid">
-        <button type="submit" class="btn btn-primary">Run Analysis</button>
+        <button type="submit" id="runButton" class="btn btn-primary">Run Analysis</button>
       </div>
     </form>
 
     <div id="progress-container" style="display:none; margin-top: 20px;">
-      <progress id="progressBar" value="0" max="100" class="form-range w-100"></progress>
-      <p id="progressStatus" class="text-center mt-2">Starting...</p>
+      <div class="progress mb-3">
+        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+          0%
+        </div>
+      </div>
+      <p id="progressStatus" class="text-center">Starting...</p>
+      <div id="downloadSection" style="display:none;" class="text-center mt-3">
+        <button id="downloadButton" class="btn btn-success">📥 Download Results</button>
+      </div>
     </div>
   </div>
 </div>
@@ -54,53 +65,114 @@
 
 <script>
   const form = document.getElementById('uploadForm');
+  const runButton = document.getElementById('runButton');
   const progressBar = document.getElementById('progressBar');
   const progressStatus = document.getElementById('progressStatus');
   const progressContainer = document.getElementById('progress-container');
+  const downloadSection = document.getElementById('downloadSection');
+  const downloadButton = document.getElementById('downloadButton');
+
+  let currentProgressId = null;
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const progressId = crypto.randomUUID();
+    currentProgressId = progressId;
+    
     const formData = new FormData(form);
     formData.append("progress_id", progressId);
 
+    // Show progress bar and disable button
     progressContainer.style.display = 'block';
-    progressBar.value = 0;
-    progressStatus.textContent = 'Uploading...';
+    downloadSection.style.display = 'none';
+    runButton.disabled = true;
+    runButton.textContent = 'Processing...';
+    
+    updateProgress(0, 'Uploading files...');
 
-    // Poll for progress updates
-    const pollInterval = setInterval(async () => {
-      const res = await fetch(`/progress/${progressId}`);
-      const data = await res.json();
-      progressBar.value = data.percent;
-      progressStatus.textContent = data.status;
+    try {
+      // Submit the form
+      const response = await fetch("/", {
+        method: "POST",
+        body: formData
+      });
 
-      if (data.percent >= 100) {
-        clearInterval(pollInterval);
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === 'started') {
+          // Start polling for progress
+          pollProgress(progressId);
+        } else {
+          throw new Error('Failed to start processing');
+        }
+      } else {
+        const text = await response.text();
+        throw new Error(text);
       }
-    }, 1000);
-
-    // Submit the form
-    const response = await fetch("/", {
-      method: "POST",
-      body: formData
-    });
-
-    if (response.ok) {
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = "HPPD_Comparison_Output.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } else {
-      const text = await response.text();
-      alert("Error: " + text);
+    } catch (error) {
+      updateProgress(0, `Error: ${error.message}`);
+      resetForm();
     }
   });
+
+  function pollProgress(progressId) {
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/progress/${progressId}`);
+        const data = await response.json();
+        
+        updateProgress(data.percent, data.status);
+        
+        if (data.completed) {
+          clearInterval(interval);
+          
+          if (data.file_path) {
+            // Show download button
+            downloadSection.style.display = 'block';
+            downloadButton.onclick = () => downloadFile(progressId);
+          } else {
+            // Error occurred
+            resetForm();
+          }
+        }
+      } catch (error) {
+        console.error('Error polling progress:', error);
+        clearInterval(interval);
+        updateProgress(0, 'Error checking progress');
+        resetForm();
+      }
+    }, 1000);
+  }
+
+  function updateProgress(percent, status) {
+    progressBar.style.width = percent + '%';
+    progressBar.setAttribute('aria-valuenow', percent);
+    progressBar.textContent = Math.round(percent) + '%';
+    progressStatus.textContent = status;
+  }
+
+  function downloadFile(progressId) {
+    const link = document.createElement('a');
+    link.href = `/download/${progressId}`;
+    link.download = 'HPPD_Comparison_Output.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Reset form after download
+    setTimeout(() => {
+      resetForm();
+    }, 1000);
+  }
+
+  function resetForm() {
+    runButton.disabled = false;
+    runButton.textContent = 'Run Analysis';
+    progressContainer.style.display = 'none';
+    downloadSection.style.display = 'none';
+    currentProgressId = null;
+  }
 </script>
 
 </body>

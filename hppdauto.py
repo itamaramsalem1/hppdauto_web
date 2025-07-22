@@ -403,8 +403,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     
     # helper for updating progress
     def progress(pct, msg):
-        if progress_callback:
+        if progress_callback:  # Add this check
             progress_callback(pct, msg)
+        print(f"Progress {pct}%: {msg}")  # Optional: also print to console
 
     progress(5, "Collecting template files...")
     # Collect all template files
@@ -683,6 +684,6 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
     wb.save(final_output_path)
     
-    progress(100, "✅ Comparison complete!")
+    progress(100, "✅ Analysis complete!")
     print("Excel file created successfully!")
     return final_output_path
