@@ -436,7 +436,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     
                     # Color coding for rows
                     if row_data["Type"] == "Projected":
-                        cell.fill = PatternFill("solid", fgColor="F5F5F5")  # Light grey
+                        cell.fill = PatternFill("solid", fgColor="D1CFCF")  # Light grey
                     elif row_data["Type"] == "Actual":
                         cell.fill = PatternFill("solid", fgColor="FFFFFF")  # White
                     elif row_data["Type"] == "Difference":
