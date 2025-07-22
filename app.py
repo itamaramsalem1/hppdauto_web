@@ -22,7 +22,7 @@ def index():
             progress_id = request.form.get("progress_id")
 
             if not template_zip or not report_zip or not date_str or not progress_id:
-                return "Missing required files, date, or progress ID", 400
+                return jsonify({"error": "Missing required files, date, or progress ID"}), 400
 
             date = datetime.strptime(date_str, "%Y-%m-%d")
 
@@ -32,6 +32,7 @@ def index():
             def process_files():
                 try:
                     def update_progress(pct, msg):
+                        print(f"[{progress_id}] {pct}% - {msg}")  # Debug logging
                         progress_store[progress_id] = {"percent": pct, "status": msg, "completed": False, "file_path": None}
 
                     # Create temporary directories
@@ -74,27 +75,27 @@ def index():
                             # Copy the file to a permanent location
                             permanent_path = os.path.join("/tmp", f"hppd_output_{progress_id}.xlsx")
                             shutil.copy2(output_path, permanent_path)
-                            
+
                             progress_store[progress_id] = {
-                                "percent": 100, 
-                                "status": "✅ Analysis complete! Download ready.", 
-                                "completed": True, 
+                                "percent": 100,
+                                "status": "✅ Analysis complete! Download ready.",
+                                "completed": True,
                                 "file_path": permanent_path
                             }
 
                         except Exception as e:
                             progress_store[progress_id] = {
-                                "percent": 0, 
-                                "status": f"Error processing files: {str(e)}", 
-                                "completed": True, 
+                                "percent": 0,
+                                "status": f"Error processing files: {str(e)}",
+                                "completed": True,
                                 "file_path": None
                             }
 
                 except Exception as e:
                     progress_store[progress_id] = {
-                        "percent": 0, 
-                        "status": f"Unexpected error: {str(e)}", 
-                        "completed": True, 
+                        "percent": 0,
+                        "status": f"Unexpected error: {str(e)}",
+                        "completed": True,
                         "file_path": None
                     }
 
@@ -105,7 +106,7 @@ def index():
             return jsonify({"status": "started", "progress_id": progress_id})
 
         except Exception as e:
-            return f"Unexpected error: {str(e)}", 500
+            return jsonify({"error": f"Unexpected server error: {str(e)}"}), 500
 
     return render_template("index_zip.html")
 
@@ -118,7 +119,7 @@ def get_progress(progress_id):
 def download_file(progress_id):
     data = progress_store.get(progress_id, {})
     file_path = data.get("file_path")
-    
+
     if file_path and os.path.exists(file_path):
         return send_file(file_path, as_attachment=True, download_name="HPPD_Comparison_Output.xlsx")
     else:
