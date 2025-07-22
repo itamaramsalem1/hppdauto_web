@@ -605,8 +605,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                             if isinstance(diff_val, (int, float)):
                                 if diff_val < 0:
                                     cell.fill = PatternFill("solid", fgColor="C8E6C9")  # Light green
-                                if diff_val == 0:
-                                    cell.fill = PatternFill("solid", fgColor="FFFFFF")  # White
+                                
                                 else:
                                     cell.fill = PatternFill("solid", fgColor="FFCDD2")  # Light red
                             else:
