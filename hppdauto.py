@@ -20,7 +20,7 @@ def normalize_name(name):
     name = re.sub(r"\s+", " ", name).strip()
     return name
 
-@lru_cache(maxsize=1000)
+
 @lru_cache(maxsize=1000)
 def extract_core_from_report(report_name):
     if not report_name:
@@ -39,11 +39,11 @@ def extract_core_from_report(report_name):
     # THEN apply manual corrections
     overrides = {
         "dallastown": "inners creek",
-        "lancaster": "abbeyville",
+        "lancaster": "abbeyville", 
         "montgomeryville": "montgomery",
         "chambersburg": "chambersburg",
         "pottstown": "pottstown"
-    }
+    }   
     return overrides.get(core, core)
 
 def build_template_name_map(template_entries):
