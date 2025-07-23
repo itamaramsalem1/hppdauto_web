@@ -460,17 +460,47 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     print("=== END DEBUG ===\n")
     
-    # Process template files in parallel
+    # Process template files with enhanced debugging
     template_entries = []
     skipped_templates = []
 
     progress(15, "Processing template files...")
+
+    # Track all files before processing
+    missing_files = ["Lebanon_Skilled_Nursing_and_Rehabilitation_Final.xlsx", 
+                    "July_Sunbury_Skilled_Nursing_and_Rehabilitation_Final.xlsx",
+                    "Abbeyville_Skilled_Nursing_and_Rehabilitation_Final.xlsx",
+                    "Inners_Creek_Skilled_Nursing_and_Rehabilitation_Final.xlsx"]
+
+    print(f"\n=== TRACKING MISSING FILES IN SEQUENTIAL PROCESSING ===")
+    print(f"Files to track: {missing_files}")
+
+    found_missing_files = []
+
     for template_file_args in template_files:
+        filepath, filename, target_date = template_file_args
         entry, skip_info = process_template_file(template_file_args)
+        
         if entry:
             template_entries.append(entry)
+            # Check if this is one of our missing files
+            facility_name = entry.get('facility', '')
+            if any(missing in filename for missing in missing_files):
+                found_missing_files.append(f"✅ FOUND: {filename} -> {facility_name} (cleaned: {entry.get('cleaned_name', '')})")
         elif skip_info:
             skipped_templates.append(skip_info)
+            if any(missing in filename for missing in missing_files):
+                found_missing_files.append(f"❌ SKIPPED: {filename} - {skip_info[1] if len(skip_info) > 1 else 'no reason'}")
+        else:
+            # This is the problem case - neither entry nor skip_info
+            if any(missing in filename for missing in missing_files):
+                found_missing_files.append(f"⚠️ NONE,NONE: {filename} - this file returned nothing!")
+
+    print(f"\n=== SEQUENTIAL PROCESSING RESULTS ===")
+    print(f"Successfully added: {len(template_entries)}")
+    print(f"Skipped: {len(skipped_templates)}")
+    print(f"Missing files tracking: {found_missing_files}")
+    print(f"=== END SEQUENTIAL TRACKING ===\n")
 
     print(f"Successfully processed {len(template_entries)} templates, skipped {len(skipped_templates)}")
     
