@@ -418,7 +418,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     # Collect all template files
     template_files = []
     for root, _, files in os.walk(templates_folder):
+        print("\n--- TEMPLATE FILES BEING SEEN ---")
         for filename in files:
+            print("FILE:", filename)
             filepath = os.path.join(root, filename)
             template_files.append((filepath, filename, target_date))
     
