@@ -274,21 +274,7 @@ def process_template_file(args):
             
         cleaned_facility = normalize_name(facility_full)
 
-        # UPDATED: Apply reverse mapping for exact facility name matches
-        if "abbeyville skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "lancaster"
-        elif "inners creek skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "dallastown"
-        elif "montgomery skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "montgomeryville"
-        elif "sunbury skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "sunbury" 
-        elif "lebanon skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "lebanon"
-        elif "chambersburg skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "chambersburg"  # ADD THIS LINE
-        elif "pottstown skilled nursing and rehabilitation" in cleaned_facility:
-            cleaned_facility = "pottstown"    # ADD THIS LINE
+
 
         # ... rest of the function stays the same
         date_cell = cell_values["B11"]
