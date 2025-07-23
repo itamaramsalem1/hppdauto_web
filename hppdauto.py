@@ -463,16 +463,14 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     # Process template files in parallel
     template_entries = []
     skipped_templates = []
-    
+
     progress(15, "Processing template files...")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        results = executor.map(process_template_file, template_files)
-        
-        for entry, skip_info in results:
-            if entry:
-                template_entries.append(entry)
-            elif skip_info:
-                skipped_templates.append(skip_info)
+    for template_file_args in template_files:
+        entry, skip_info = process_template_file(template_file_args)
+        if entry:
+            template_entries.append(entry)
+        elif skip_info:
+            skipped_templates.append(skip_info)
 
     print(f"Successfully processed {len(template_entries)} templates, skipped {len(skipped_templates)}")
     
