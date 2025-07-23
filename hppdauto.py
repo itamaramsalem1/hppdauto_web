@@ -25,9 +25,15 @@ def extract_core_from_report(report_name):
     if not report_name:
         return ""
     report_name = str(report_name)
-    if report_name.lower().startswith("total nursing wrkd - "):
-        return normalize_name(report_name[21:])
-    return normalize_name(re.sub(r"\s+PA\d+_\d+", "", report_name))
+    core = normalize_name(report_name)
+
+    # Manual name corrections
+    overrides = {
+        "dallastown": "inners creek",
+        "lancaster": "abbeyville"
+    }
+    return overrides.get(core, core if not report_name.lower().startswith("total nursing wrkd - ") else normalize_name(report_name[21:]))
+
 
 def build_template_name_map(template_entries):
     return {entry["cleaned_name"]: entry["facility"] for entry in template_entries}
