@@ -263,20 +263,18 @@ def process_template_file(args):
             return None, (filename, "Missing facility name in D3")
             
         cleaned_facility = normalize_name(facility_full)
-        # Add reverse mapping for templates - extract just the core facility name
-        core_facility_name = None
-        for core_name in ["abbeyville", "inners creek", "montgomery"]:
-            if core_name in cleaned_facility:
-                core_facility_name = core_name
-                break
 
-        if core_facility_name:
-            reverse_overrides = {
-                "abbeyville": "lancaster",
-                "inners creek": "dallastown", 
-                "montgomery": "montgomeryville"
-            }
-            cleaned_facility = reverse_overrides.get(core_facility_name, cleaned_facility) 
+        # Only apply reverse mapping for exact facility name matches
+        if "abbeyville skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "lancaster"
+        elif "inners creek skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "dallastown"
+        elif "montgomery skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "montgomeryville"
+        elif "sunbury skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "sunbury" 
+        elif "lebanon skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "lebanon"
 
         date_cell = cell_values["B11"]
         if not date_cell:
