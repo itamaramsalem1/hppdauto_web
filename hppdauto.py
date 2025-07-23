@@ -263,14 +263,20 @@ def process_template_file(args):
             return None, (filename, "Missing facility name in D3")
             
         cleaned_facility = normalize_name(facility_full)
+        # Add reverse mapping for templates - extract just the core facility name
+        core_facility_name = None
+        for core_name in ["abbeyville", "inners creek", "montgomery"]:
+            if core_name in cleaned_facility:
+                core_facility_name = core_name
+                break
 
-        # Add this new code here:
-        reverse_overrides = {
-            "abbeyville": "lancaster",
-            "inners creek": "dallastown", 
-            "montgomery": "montgomeryville"
-        }
-        cleaned_facility = reverse_overrides.get(cleaned_facility, cleaned_facility)
+        if core_facility_name:
+            reverse_overrides = {
+                "abbeyville": "lancaster",
+                "inners creek": "dallastown", 
+                "montgomery": "montgomeryville"
+            }
+            cleaned_facility = reverse_overrides.get(core_facility_name, cleaned_facility) 
 
         date_cell = cell_values["B11"]
         if not date_cell:
@@ -434,8 +440,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     
     print(f"Processing {len(template_files)} template files...")
 
+    # Debug specific problematic files
     debug_files = ["Lebanon_Skilled_Nursing_and_Rehabilitation_Final.xlsx", 
-               "July_Sunbury_Skilled_Nursing_and_Rehabilitation_Final.xlsx"]
+                "July_Sunbury_Skilled_Nursing_and_Rehabilitation_Final.xlsx"]
 
     print("\n=== DEBUGGING SPECIFIC FILES ===")
     for filepath, filename, target_date in template_files:
@@ -459,7 +466,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 traceback.print_exc()
 
     print("=== END DEBUG ===\n")
-    
+
     # Process template files with enhanced debugging
     template_entries = []
     skipped_templates = []
