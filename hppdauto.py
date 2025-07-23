@@ -21,20 +21,30 @@ def normalize_name(name):
     return name
 
 @lru_cache(maxsize=1000)
+@lru_cache(maxsize=1000)
 def extract_core_from_report(report_name):
     if not report_name:
         return ""
     report_name = str(report_name)
-    core = normalize_name(report_name)
 
-    # Manual name corrections
+    # Remove prefix if present FIRST
+    if report_name.lower().startswith("total nursing wrkd - "):
+        core = report_name[21:]
+    else:
+        core = report_name
+
+    # THEN normalize
+    core = normalize_name(core)
+
+    # THEN apply manual corrections
     overrides = {
         "dallastown": "inners creek",
         "lancaster": "abbeyville",
-        "montgomeryville": "montgomery"
+        "montgomeryville": "montgomery",
+        "chambersburg": "chambersburg",
+        "pottstown": "pottstown"
     }
-    return overrides.get(core, core if not report_name.lower().startswith("total nursing wrkd - ") else normalize_name(report_name[21:]))
-
+    return overrides.get(core, core)
 
 def build_template_name_map(template_entries):
     return {entry["cleaned_name"]: entry["facility"] for entry in template_entries}
@@ -264,7 +274,7 @@ def process_template_file(args):
             
         cleaned_facility = normalize_name(facility_full)
 
-        # Only apply reverse mapping for exact facility name matches
+        # UPDATED: Apply reverse mapping for exact facility name matches
         if "abbeyville skilled nursing and rehabilitation" in cleaned_facility:
             cleaned_facility = "lancaster"
         elif "inners creek skilled nursing and rehabilitation" in cleaned_facility:
@@ -275,7 +285,12 @@ def process_template_file(args):
             cleaned_facility = "sunbury" 
         elif "lebanon skilled nursing and rehabilitation" in cleaned_facility:
             cleaned_facility = "lebanon"
+        elif "chambersburg skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "chambersburg"  # ADD THIS LINE
+        elif "pottstown skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "pottstown"    # ADD THIS LINE
 
+        # ... rest of the function stays the same
         date_cell = cell_values["B11"]
         if not date_cell:
             wb.close()
