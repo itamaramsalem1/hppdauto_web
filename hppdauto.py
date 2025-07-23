@@ -30,7 +30,8 @@ def extract_core_from_report(report_name):
     # Manual name corrections
     overrides = {
         "dallastown": "inners creek",
-        "lancaster": "abbeyville"
+        "lancaster": "abbeyville",
+        "montgomeryville": "montgomery"
     }
     return overrides.get(core, core if not report_name.lower().startswith("total nursing wrkd - ") else normalize_name(report_name[21:]))
 
