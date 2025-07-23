@@ -11,20 +11,6 @@ from openpyxl.styles import PatternFill, Font, Alignment, numbers
 import concurrent.futures
 from functools import lru_cache
 
-def clean_facility_name(name):
-    import re
-    name = str(name).lower()
-    name = re.sub(r"[^a-z0-9\s]", "", name)
-    name = re.sub(r"\s+", " ", name).strip()
-    overrides = {
-        "abbeyville skilled nursing and rehabilitation": "lancaster",
-        "inners creek skilled nursing and rehabilitation": "dallastown",
-        "montgomery skilled nursing and rehabilitation": "montgomeryville",
-        "sunbury skilled nursing and rehabilitation": "sunbury",
-        "lebanon skilled nursing and rehabilitation": "lebanon"
-    }
-    return overrides.get(name, name)
-
 @lru_cache(maxsize=1000)
 def normalize_name(name):
     if not name:
@@ -35,16 +21,19 @@ def normalize_name(name):
     return name
 
 @lru_cache(maxsize=1000)
-def extract_core_from_report(report_path):
-    try:
-        wb = xlrd.open_workbook(report_path)
-        sheet = wb.sheet_by_index(0)
-        facility_name = sheet.cell_value(0, 0)
-        wb.release_resources()
-        return clean_facility_name(facility_name)
-    except Exception:
-        filename = os.path.basename(report_path)
-        return clean_facility_name(filename)
+def extract_core_from_report(report_name):
+    if not report_name:
+        return ""
+    report_name = str(report_name)
+    core = normalize_name(report_name)
+
+    # Manual name corrections
+    overrides = {
+        "dallastown": "inners creek",
+        "lancaster": "abbeyville",
+        "montgomeryville": "montgomery"
+    }
+    return overrides.get(core, core if not report_name.lower().startswith("total nursing wrkd - ") else normalize_name(report_name[21:]))
 
 
 def build_template_name_map(template_entries):
@@ -273,9 +262,19 @@ def process_template_file(args):
             wb.close()
             return None, (filename, "Missing facility name in D3")
             
-        cleaned_facility = clean_facility_name(facility_full)
+        cleaned_facility = normalize_name(facility_full)
 
         # Only apply reverse mapping for exact facility name matches
+        if "abbeyville skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "lancaster"
+        elif "inners creek skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "dallastown"
+        elif "montgomery skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "montgomeryville"
+        elif "sunbury skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "sunbury" 
+        elif "lebanon skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "lebanon"
 
         date_cell = cell_values["B11"]
         if not date_cell:
