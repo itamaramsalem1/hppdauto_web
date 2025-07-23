@@ -264,6 +264,14 @@ def process_template_file(args):
             
         cleaned_facility = normalize_name(facility_full)
 
+        # Add this new code here:
+        reverse_overrides = {
+            "abbeyville": "lancaster",
+            "inners creek": "dallastown", 
+            "montgomery": "montgomeryville"
+        }
+        cleaned_facility = reverse_overrides.get(cleaned_facility, cleaned_facility)
+
         date_cell = cell_values["B11"]
         if not date_cell:
             wb.close()
@@ -425,6 +433,32 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
             template_files.append((filepath, filename, target_date))
     
     print(f"Processing {len(template_files)} template files...")
+
+    debug_files = ["Lebanon_Skilled_Nursing_and_Rehabilitation_Final.xlsx", 
+               "July_Sunbury_Skilled_Nursing_and_Rehabilitation_Final.xlsx"]
+
+    print("\n=== DEBUGGING SPECIFIC FILES ===")
+    for filepath, filename, target_date in template_files:
+        if any(debug_file in filename for debug_file in debug_files):
+            print(f"\nTesting {filename}:")
+            try:
+                result = process_template_file((filepath, filename, target_date))
+                entry, skip_info = result
+                if entry:
+                    print(f"✅ {filename} - SUCCESS")
+                    print(f"   Facility: {entry['facility']}")
+                    print(f"   Date: {entry['date']}")
+                    print(f"   Census: {entry['census']}")
+                elif skip_info:
+                    print(f"❌ {filename} - SKIPPED: {skip_info}")
+                else:
+                    print(f"⚠️ {filename} - RETURNED NONE,NONE (this is the problem!)")
+            except Exception as e:
+                print(f"💥 {filename} - EXCEPTION: {e}")
+                import traceback
+                traceback.print_exc()
+
+    print("=== END DEBUG ===\n")
     
     # Process template files in parallel
     template_entries = []
