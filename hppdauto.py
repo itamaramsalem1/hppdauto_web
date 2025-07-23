@@ -438,32 +438,34 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     
     print(f"Processing {len(template_files)} template files...")
 
-    # Debug specific problematic files
-    debug_files = ["Lebanon_Skilled_Nursing_and_Rehabilitation_Final.xlsx", 
-                "July_Sunbury_Skilled_Nursing_and_Rehabilitation_Final.xlsx"]
+    # Add debug code here
+    print(f"\n=== TEMPLATE FILES DEBUG ===")
+    print(f"Total template files found: {len(template_files)}")
 
-    print("\n=== DEBUGGING SPECIFIC FILES ===")
-    for filepath, filename, target_date in template_files:
-        if any(debug_file in filename for debug_file in debug_files):
-            print(f"\nTesting {filename}:")
-            try:
-                result = process_template_file((filepath, filename, target_date))
-                entry, skip_info = result
-                if entry:
-                    print(f"✅ {filename} - SUCCESS")
-                    print(f"   Facility: {entry['facility']}")
-                    print(f"   Date: {entry['date']}")
-                    print(f"   Census: {entry['census']}")
-                elif skip_info:
-                    print(f"❌ {filename} - SKIPPED: {skip_info}")
-                else:
-                    print(f"⚠️ {filename} - RETURNED NONE,NONE (this is the problem!)")
-            except Exception as e:
-                print(f"💥 {filename} - EXCEPTION: {e}")
-                import traceback
-                traceback.print_exc()
+    # Track specific missing facilities
+    missing_facilities = ["Chambersburg", "Pottstown"]
+    found_missing = []
 
-    print("=== END DEBUG ===\n")
+    for filepath, filename, target_date_param in template_files:
+        print(f"Found template: {filename}")
+        
+        # Check if this is one of our missing facilities
+        for missing in missing_facilities:
+            if missing.lower() in filename.lower():
+                found_missing.append(f"✅ FOUND {missing}: {filename}")
+                print(f"  --> This is {missing}!")
+
+    print(f"\nMissing facilities tracking:")
+    for item in found_missing:
+        print(item)
+
+    # Check what wasn't found
+    not_found = [facility for facility in missing_facilities 
+                if not any(facility.lower() in filename.lower() for filepath, filename, target_date_param in template_files)]
+    if not_found:
+        print(f"❌ NOT FOUND: {not_found}")
+
+    print(f"=== END TEMPLATE FILES DEBUG ===\n")
 
     # Process template files with enhanced debugging
     template_entries = []
@@ -471,41 +473,54 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     progress(15, "Processing template files...")
 
-    # Track all files before processing
-    missing_files = ["Lebanon_Skilled_Nursing_and_Rehabilitation_Final.xlsx", 
-                    "July_Sunbury_Skilled_Nursing_and_Rehabilitation_Final.xlsx",
-                    "Abbeyville_Skilled_Nursing_and_Rehabilitation_Final.xlsx",
-                    "Inners_Creek_Skilled_Nursing_and_Rehabilitation_Final.xlsx"]
-
-    print(f"\n=== TRACKING MISSING FILES IN SEQUENTIAL PROCESSING ===")
-    print(f"Files to track: {missing_files}")
-
-    found_missing_files = []
+    print(f"\n=== PROCESSING TEMPLATES DEBUG ===")
+    processed_count = 0
+    skipped_count = 0
 
     for template_file_args in template_files:
-        filepath, filename, target_date = template_file_args
+        filepath, filename, target_date_param = template_file_args
+        
+        # Check if this is a missing facility before processing
+        is_missing_facility = any(missing.lower() in filename.lower() for missing in missing_facilities)
+        if is_missing_facility:
+            print(f"\n🔍 PROCESSING MISSING FACILITY: {filename}")
+            print(f"   Full path: {filepath}")
+            print(f"   Target date: {target_date_param}")
+        
         entry, skip_info = process_template_file(template_file_args)
         
         if entry:
             template_entries.append(entry)
-            # Check if this is one of our missing files
-            facility_name = entry.get('facility', '')
-            if any(missing in filename for missing in missing_files):
-                found_missing_files.append(f"✅ FOUND: {filename} -> {facility_name} (cleaned: {entry.get('cleaned_name', '')})")
+            processed_count += 1
+            if is_missing_facility:
+                print(f"   ✅ SUCCESS: Added to template_entries")
+                print(f"   Facility name: {entry['facility']}")
+                print(f"   Cleaned name: {entry['cleaned_name']}")
         elif skip_info:
             skipped_templates.append(skip_info)
-            if any(missing in filename for missing in missing_files):
-                found_missing_files.append(f"❌ SKIPPED: {filename} - {skip_info[1] if len(skip_info) > 1 else 'no reason'}")
+            skipped_count += 1
+            if is_missing_facility:
+                print(f"   ❌ SKIPPED: {skip_info}")
         else:
             # This is the problem case - neither entry nor skip_info
-            if any(missing in filename for missing in missing_files):
-                found_missing_files.append(f"⚠️ NONE,NONE: {filename} - this file returned nothing!")
+            if is_missing_facility:
+                print(f"   ⚠️ RETURNED NONE,NONE - THIS IS THE PROBLEM!")
+                
+                # Try to process again with more detailed error catching
+                print(f"   Attempting detailed processing...")
+                try:
+                    result = process_template_file(template_file_args)
+                    print(f"   Retry result: {result}")
+                except Exception as e:
+                    print(f"   Exception during retry: {e}")
+                    import traceback
+                    traceback.print_exc()
 
-    print(f"\n=== SEQUENTIAL PROCESSING RESULTS ===")
-    print(f"Successfully added: {len(template_entries)}")
-    print(f"Skipped: {len(skipped_templates)}")
-    print(f"Missing files tracking: {found_missing_files}")
-    print(f"=== END SEQUENTIAL TRACKING ===\n")
+    print(f"\nProcessing summary:")
+    print(f"Successfully processed: {processed_count}")
+    print(f"Skipped: {skipped_count}")
+    print(f"Total template_entries: {len(template_entries)}")
+    print(f"=== END PROCESSING DEBUG ===\n")
 
     print(f"Successfully processed {len(template_entries)} templates, skipped {len(skipped_templates)}")
     
