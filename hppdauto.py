@@ -559,6 +559,94 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     template_lookup = {entry["facility"]: entry for entry in template_entries}
     
     progress(65, "Matching reports to templates...")
+
+    # Right after: progress(65, "Matching reports to templates...")
+
+    print(f"\n=== REPORT-TO-TEMPLATE MATCHING DEBUG ===")
+    print(f"Templates processed: {len(template_entries)}")
+    print(f"Reports processed: {len(report_data_list)}")
+
+    # Show what template facilities we have
+    template_facility_names = [entry["facility"] for entry in template_entries]
+    print(f"\nTemplate facilities available:")
+    for name in sorted(template_facility_names):
+        print(f"  - {name}")
+
+    # Track our missing facilities specifically
+    missing_templates = ["Chambersburg Skilled Nursing and Rehabilitation", 
+                        "Pottstown Skilled Nursing and Rehabilitation"]
+
+    print(f"\nChecking for missing facilities in templates:")
+    for missing in missing_templates:
+        if missing in template_facility_names:
+            print(f"  ✅ {missing} - FOUND in templates")
+        else:
+            print(f"  ❌ {missing} - NOT FOUND in templates")
+
+    # Show what report facilities we have and their matched template names
+    print(f"\nReport facilities and their matched templates:")
+    report_matches = {}
+    for report_data in report_data_list:
+        report_facility = report_data["report_facility"]
+        matched_template = report_data["matched_template_name"]
+        report_date = report_data["report_date"]
+        report_matches[report_facility] = {
+            "matched_template": matched_template,
+            "date": report_date
+        }
+        print(f"  Report: '{report_facility}' -> Template: '{matched_template}' (Date: {report_date})")
+
+    # Check if our missing facilities have corresponding reports
+    print(f"\nChecking for missing facilities in reports:")
+    for missing in missing_templates:
+        found_in_reports = False
+        for report_facility, data in report_matches.items():
+            if data["matched_template"] == missing:
+                print(f"  ✅ {missing} - FOUND report: '{report_facility}' (Date: {data['date']})")
+                found_in_reports = True
+                break
+        if not found_in_reports:
+            print(f"  ❌ {missing} - NO MATCHING REPORTS FOUND")
+
+    # Now check the actual matching logic
+    print(f"\nDetailed matching process:")
+    successful_matches = 0
+    failed_matches = 0
+
+    for report_data in report_data_list:
+        matched_template_name = report_data["matched_template_name"]
+        report_date = report_data["report_date"]
+        
+        # Find matching template - this is the same logic from your code
+        candidates = [entry for entry in template_entries 
+                    if entry["facility"] == matched_template_name 
+                    and entry["date"] == report_date]
+        
+        is_missing_facility = matched_template_name in missing_templates
+        
+        if candidates:
+            successful_matches += 1
+            if is_missing_facility:
+                print(f"  ✅ {matched_template_name} - SUCCESSFUL MATCH (Date: {report_date})")
+        else:
+            failed_matches += 1
+            if is_missing_facility:
+                print(f"  ❌ {matched_template_name} - FAILED MATCH (Date: {report_date})")
+                
+                # Debug why it failed
+                template_dates_for_facility = [entry["date"] for entry in template_entries 
+                                            if entry["facility"] == matched_template_name]
+                if template_dates_for_facility:
+                    print(f"     Template dates available: {template_dates_for_facility}")
+                    print(f"     Report date needed: {report_date}")
+                else:
+                    print(f"     No templates found for facility: {matched_template_name}")
+
+    print(f"\nMatching summary:")
+    print(f"Successful matches: {successful_matches}")
+    print(f"Failed matches: {failed_matches}")
+    print(f"Total reports: {len(report_data_list)}")
+    print(f"=== END REPORT-TO-TEMPLATE MATCHING DEBUG ===\n")
     for report_data in report_data_list:
         # Find matching template
         candidates = [entry for entry in template_entries 
