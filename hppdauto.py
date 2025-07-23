@@ -274,9 +274,17 @@ def process_template_file(args):
             
         cleaned_facility = normalize_name(facility_full)
 
+        # Add back the necessary mappings (but NOT the conflicting ones)
+        if "sunbury skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "sunbury" 
+        elif "lebanon skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "lebanon"
+        elif "chambersburg skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "chambersburg"
+        elif "pottstown skilled nursing and rehabilitation" in cleaned_facility:
+            cleaned_facility = "pottstown"
+        # NOTE: Do NOT add back abbeyville, inners creek, or montgomery mappings
 
-
-        # ... rest of the function stays the same
         date_cell = cell_values["B11"]
         if not date_cell:
             wb.close()
