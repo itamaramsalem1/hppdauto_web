@@ -22,19 +22,32 @@ def normalize_name(name):
 
 
 @lru_cache(maxsize=1000)
+@lru_cache(maxsize=1000)
 def extract_core_from_report(report_name):
     if not report_name:
         return ""
-    report_name = str(report_name)
+    report_name = str(report_name).lower()
 
-    # Remove prefix if present FIRST
-    if report_name.lower().startswith("total nursing wrkd - "):
-        core = report_name[21:]
+    # Remove prefix like "Total Nursing Wrkd - " if present
+    if report_name.startswith("total nursing wrkd - "):
+        core = report_name[21:].strip()
     else:
-        core = report_name
+        core = report_name.strip()
 
-    # THEN normalize
-    core = normalize_name(core)
+    # Normalize
+    core = re.sub(r"[^a-z0-9\s]", "", core)
+    core = re.sub(r"\s+", " ", core).strip()
+
+    # Apply overrides
+    overrides = {
+        "dallastown": "inners creek",
+        "lancaster": "abbeyville",
+        "montgomeryville": "montgomery",
+        "west reading": "lebanon",
+        "sunbury": "sunbury"  # just to be safe
+    }
+    return overrides.get(core, core)
+
 
     # THEN apply manual corrections
     overrides = {
@@ -72,9 +85,25 @@ def match_report_to_template_cached(report_name, template_keys_tuple, cutoff=0.6
     return match[0] if match else None
 
 def match_report_to_template(report_name, template_name_map, cutoff=0.6):
-    template_keys_tuple = tuple(template_name_map.keys())
-    matched_key = match_report_to_template_cached(report_name, template_keys_tuple, cutoff)
-    return template_name_map.get(matched_key) if matched_key else None
+    core_name = extract_core_from_report(report_name)
+    template_keys = list(template_name_map.keys())
+
+    # 1. Try override or exact match
+    if core_name in template_name_map:
+        return template_name_map[core_name]
+
+    # 2. Try fuzzy match
+    match = get_close_matches(core_name, template_keys, n=1, cutoff=cutoff)
+    if match:
+        return template_name_map[match[0]]
+
+    # 3. Try low-confidence match as fallback
+    match = get_close_matches(core_name, template_keys, n=1, cutoff=0.3)
+    if match:
+        return template_name_map[match[0]]
+
+    return None
+
 
 def safe_float_conversion(value, default=0.0):
     """Safely convert a value to float"""
@@ -381,6 +410,13 @@ def process_report_file(args):
             return None, (filename, f"Date mismatch: report has {report_date}, looking for {target_date}")
 
         report_facility = ws3.cell_value(4, 1)
+        print("DEBUG REPORT FILE:", filename)
+        print("Facility Name:", report_facility)
+        print("Date from Sheet3:", ws3.cell_value(3, 1))
+        print("H11:", ws3.cell_value(10, 7))  # RN
+        print("H12:", ws3.cell_value(11, 7))  # LPN
+        print("H13:", ws3.cell_value(12, 7))  # CNA
+
         if not report_facility:
             return None, (filename, "Missing facility name")
 
