@@ -11,7 +11,6 @@ from openpyxl.styles import PatternFill, Font, Alignment, numbers
 import concurrent.futures
 from functools import lru_cache
 
-@lru_cache(maxsize=1000)
 def normalize_name(name):
     if not name:
         return ""
@@ -21,7 +20,6 @@ def normalize_name(name):
     return name
 
 
-@lru_cache(maxsize=1000)
 @lru_cache(maxsize=1000)
 def extract_core_from_report(report_name):
     if not report_name:
@@ -48,21 +46,9 @@ def extract_core_from_report(report_name):
     }
     return overrides.get(core, core)
 
-
-    # THEN apply manual corrections
-    overrides = {
-        "dallastown": "inners creek",
-        "lancaster": "abbeyville", 
-        "montgomeryville": "montgomery",
-        "chambersburg": "chambersburg",
-        "pottstown": "pottstown"
-    }   
-    return overrides.get(core, core)
-
 def build_template_name_map(template_entries):
     return {entry["cleaned_name"]: entry["facility"] for entry in template_entries}
 
-@lru_cache(maxsize=1000)
 def match_report_to_template_cached(report_name, template_keys_tuple, cutoff=0.6):
     """Cached version of matching function"""
     core_name = extract_core_from_report(report_name)
