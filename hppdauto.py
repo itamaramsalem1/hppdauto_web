@@ -449,10 +449,6 @@ def process_report_file(args):
         return None, (filename, f"Failed to parse report: {str(e)[:100]}")
 
 def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path, progress_callback=None):
-    if not templates_folder or not os.path.isdir(templates_folder):
-        raise ValueError(f"🚫 templates_folder is invalid: {templates_folder}")
-    if not reports_folder or not os.path.isdir(reports_folder):
-        raise ValueError(f"🚫 reports_folder is invalid: {reports_folder}")
     
     print("Starting HPPD comparison...")
 

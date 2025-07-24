@@ -71,6 +71,9 @@ def index():
                             print(f"[{progress_id}] Report extraction failed: {e}")
                             return
 
+                        print(f"[{progress_id}] 🧪 Template path exists: {os.path.isdir(template_path)}, contains {len(os.listdir(template_path))} files")
+                        print(f"[{progress_id}] 🧪 Report path exists: {os.path.isdir(report_path)}, contains {len(os.listdir(report_path))} files")
+
                         try:
                             print(f"[{progress_id}] Starting run_hppd_comparison_for_date")
                             output_path = run_hppd_comparison_for_date(
