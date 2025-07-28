@@ -779,7 +779,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     # Save the file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
+    final_output_path = os.path.join(output_path, f"HPPD_Comparison_{target_date}.xlsx")
     wb.save(final_output_path)
     
     progress(100, "✅ Analysis complete!")
