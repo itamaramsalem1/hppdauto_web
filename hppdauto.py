@@ -557,7 +557,20 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     
     progress(30, "Building template map...")
     # Build template map once
+    
+    # ─── TEMPLATE DIAGNOSTICS ────────────────────────────────────────────────────
+    print(f"\n[TEMPLATE DIAG] template_entries count: {len(template_entries)}")
+    print("[TEMPLATE DIAG] cleaned_name → facility:")
+    for e in template_entries:
+        print(f"  • {e['cleaned_name']} → {e['facility']}")
+    # ───────────────────────────────────────────────────────────────────────────────
+
     template_map = build_template_name_map(template_entries)
+    # ─── TEMPLATE MAP DIAGNOSTICS ────────────────────────────────────────────────
+    print(f"\n[TEMPLATE DIAG] template_name_map keys ({len(template_map)}):")
+    for key, val in template_map.items():
+        print(f"  • {key} → {val}")
+    # ───────────────────────────────────────────────────────────────────────────────
     
     progress(40, "Collecting report files...")
     # Collect all report files
@@ -648,6 +661,13 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         matched_template_name = report_data["matched_template_name"]
         report_date = report_data["report_date"]
         
+         # ─── MATCH FILTER DIAGNOSTICS ─────────────────────────────────────────────
+        print(f"[MATCH DIAG] report='{report_data['report_facility']}' on {report_data['report_date']}")
+        print(f"  matched_template_name = '{report_data['matched_template_name']}'")
+        dates = [e['date'] for e in template_entries 
+                if e['facility'] == report_data['matched_template_name']]
+        print(f"  template dates for that facility: {dates}")
+        # ────────────────────────────────────────────────────────────────────────────
         # Find matching template - this is the same logic from your code
         candidates = [entry for entry in template_entries 
                     if entry["facility"] == matched_template_name 
@@ -679,10 +699,18 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     print(f"Total reports: {len(report_data_list)}")
     print(f"=== END REPORT-TO-TEMPLATE MATCHING DEBUG ===\n")
     for report_data in report_data_list:
-        # Find matching template
-        candidates = [entry for entry in template_entries 
-                     if entry["facility"] == report_data["matched_template_name"] 
-                     and entry["date"] == report_data["report_date"]]
+        #DEBUG: inspect what's coming in
+        print(f"🔍 Processing report '{report_data['filename']}'")
+        print(f"    report_facility        = {report_data['report_facility']!r}")
+        print(f"    matched_template_name  = {report_data['matched_template_name']!r}")
+        print("    AVAILABLE template_entries:")
+        for e in template_entries:
+            print(f"      • facility={e['facility']!r}, date={e['date']}")
+        print("    TEMPLATE MAP KEYS (cleaned names):", list(template_name_map.keys()))
+
+        candidates = [entry for entry in template_entries
+                    if entry["facility"] == report_data["matched_template_name"]
+                    and entry["date"] == report_data["report_date"]]
         
         if not candidates:
             skipped_reports.append((report_data["filename"], f"No matched date in template. Report date: {report_data['report_date']}"))
