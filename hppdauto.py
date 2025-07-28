@@ -261,44 +261,38 @@ def compute_agency_percentages(agency_data, actual_cna_hours, actual_rn_hours, a
 
 
 def extract_hours_by_dept_code(ws3):
-    """Extract hours by department code, reading hours from column H (index 7)."""
+    """Extract hours from column H by scanning department codes in column C, starting from row 10."""
     rn_hours = lpn_hours = cna_hours = total_hours = 0.0
-    found_codes = []
 
-    # Scan rows 10–25 (index 9–24)
-    for r in range(9, min(ws3.nrows, 25)):
+    for row in range(9, ws3.nrows):  # Start from row 10 (index 9)
         try:
-            code = ws3.cell_value(r, 2)      # Col C (index 2)
-            hrs  = ws3.cell_value(r, 7)      # Col H (index 7)
-            if code:
-                code_str = str(code).strip()
-                found_codes.append(code_str)
-                val = safe_float_conversion(hrs)
+            code_cell = ws3.cell_value(row, 2)  # Column C (index 2)
+            if not code_cell:
+                continue
 
-                if code_str == "3210":       # RN
-                    rn_hours = val
-                elif code_str == "3215":     # LPN
-                    lpn_hours = val
-                elif code_str == "3225":     # CNA
-                    cna_hours = val
+            code = str(code_cell).strip()
+            hours = safe_float_conversion(ws3.cell_value(row, 7))  # Column H (index 7)
 
-            # Look also for a “Total Hours” row
-            txt = ws3.cell_value(r, 2) or ws3.cell_value(r, 1)
-            if txt and any(k in str(txt).lower() for k in ("total hours worked","grand total","total hours")):
-                total_hours = safe_float_conversion(ws3.cell_value(r, 7))
-                break
+            if code == "3210":       # RN
+                rn_hours = hours
+            elif code == "3215":     # LPN
+                lpn_hours = hours
+            elif code == "3225":     # CNA
+                cna_hours = hours
 
-        except Exception as e:
-            print(f"    ⚠️ Row {r} error: {e}")
+            # Look for total row
+            label = str(code_cell).lower()
+            if "total hours worked" in label or "grand total" in label:
+                total_hours = safe_float_conversion(ws3.cell_value(row, 7))
 
-    calc_total = rn_hours + lpn_hours + cna_hours
-    if total_hours and abs(calc_total - total_hours) > 1.0:
-        print(f"  ⚠️ Sum mismatch: {calc_total} vs {total_hours}")
+        except Exception:
+            continue
 
-    if not total_hours and calc_total == 0:
-        print("  ⚠️ No hours found at all!")
+    if total_hours == 0:
+        total_hours = rn_hours + lpn_hours + cna_hours
 
     return rn_hours, lpn_hours, cna_hours, total_hours
+
 
 def process_template_file(args):
     """Process a single template file - for parallel processing"""
