@@ -376,73 +376,144 @@ def process_template_file(args):
         return None, (filename, f"Data parsing error: {str(e)[:100]}")
 
 def process_report_file(args):
-    """Process a single report file - for parallel processing"""
+    """Process a single report file - for parallel processing with enhanced debugging"""
     filepath, filename, target_date, template_map = args
     
+    print(f"\n🔍 REPORT DEBUG: Starting {filename}")
+    
+    # Step 1: File validation
     if not is_valid_file(filename, ".xls"):
+        print(f"    ❌ Invalid file type")
         if filename.startswith('._'):
+            print(f"    Reason: Mac OS hidden file")
             return None, (filename, "Mac OS hidden file, skipped")
         else:
+            print(f"    Reason: Not .xls extension")
             return None, (filename, "Not .xls, skipped")
     
+    print(f"    ✅ Valid .xls file")
+    
+    # Step 2: Open workbook
     try:
         wb = xlrd.open_workbook(filepath)
+        print(f"    ✅ Workbook opened successfully")
+    except Exception as e:
+        print(f"    ❌ Failed to open workbook: {e}")
+        return None, (filename, f"Failed to open workbook: {str(e)[:50]}")
+    
+    # Step 3: Check required sheets
+    sheet_names = wb.sheet_names()
+    print(f"    Available sheets: {sheet_names}")
+    
+    if "Sheet3" not in sheet_names:
+        print(f"    ❌ Missing Sheet3")
+        return None, (filename, "No Sheet3 found")
+    if "Sheet2" not in sheet_names:
+        print(f"    ❌ Missing Sheet2")
+        return None, (filename, "No Sheet2 found")
         
-        # Check for required sheets
-        if "Sheet3" not in wb.sheet_names():
-            return None, (filename, "No Sheet3 found")
-        if "Sheet2" not in wb.sheet_names():
-            return None, (filename, "No Sheet2 found")
-            
+    print(f"    ✅ Required sheets found")
+    
+    try:
         ws3 = wb.sheet_by_name("Sheet3")
         ws2 = wb.sheet_by_name("Sheet2")
+        print(f"    ✅ Sheets loaded successfully")
+    except Exception as e:
+        print(f"    ❌ Failed to load sheets: {e}")
+        return None, (filename, f"Failed to load sheets: {str(e)[:50]}")
+    
+    # Step 4: Extract and validate date
+    print(f"    📅 Checking date...")
+    try:
+        raw_date = ws3.cell_value(3, 1)
+        print(f"    Raw date from B4 (3,1): {raw_date} (type: {type(raw_date)})")
         
-        # Get date
-        try:
-            raw_date = ws3.cell_value(3, 1)
-            if isinstance(raw_date, float):
-                report_date = datetime(*xlrd.xldate_as_tuple(raw_date, wb.datemode)).date()
-            else:
-                report_date = pd.to_datetime(raw_date).date()
-        except:
-            return None, (filename, "Invalid date format")
+        if isinstance(raw_date, float):
+            report_date = datetime(*xlrd.xldate_as_tuple(raw_date, wb.datemode)).date()
+        else:
+            report_date = pd.to_datetime(raw_date).date()
+            
+        print(f"    Parsed report date: {report_date}")
         
-        if target_date and report_date != datetime.strptime(target_date, "%Y-%m-%d").date():
+    except Exception as e:
+        print(f"    ❌ Date parsing failed: {e}")
+        return None, (filename, f"Invalid date format: {str(e)[:50]}")
+    
+    # Step 5: Check date match
+    if target_date:
+        target_date_obj = datetime.strptime(target_date, "%Y-%m-%d").date()
+        print(f"    Target date: {target_date_obj}")
+        print(f"    Report date: {report_date}")
+        print(f"    Dates match: {report_date == target_date_obj}")
+        
+        if report_date != target_date_obj:
+            print(f"    ❌ DATE MISMATCH: {report_date} != {target_date_obj}")
             return None, (filename, f"Date mismatch: report has {report_date}, looking for {target_date}")
-
+    
+    print(f"    ✅ Date validation passed")
+    
+    # Step 6: Extract facility name
+    print(f"    🏥 Extracting facility name...")
+    try:
         report_facility = ws3.cell_value(4, 1)
-        print("DEBUG REPORT FILE:", filename)
-        print("Facility Name:", report_facility)
-        print("Date from Sheet3:", ws3.cell_value(3, 1))
-        print("H11:", ws3.cell_value(10, 7))  # RN
-        print("H12:", ws3.cell_value(11, 7))  # LPN
-        print("H13:", ws3.cell_value(12, 7))  # CNA
-
+        print(f"    Raw facility from B5 (4,1): '{report_facility}' (type: {type(report_facility)})")
+        
         if not report_facility:
+            print(f"    ❌ Empty facility name")
             return None, (filename, "Missing facility name")
+            
+        print(f"    ✅ Facility name extracted: '{report_facility}'")
+    except Exception as e:
+        print(f"    ❌ Failed to extract facility name: {e}")
+        return None, (filename, f"Failed to extract facility: {str(e)[:50]}")
 
-        # Get hours data from Sheet3
-        try:
-            actual_hours = safe_float_conversion(ws3.cell_value(13, 7))
-            actual_cna_hours = safe_float_conversion(ws3.cell_value(12, 7))
-            actual_rn_hours = safe_float_conversion(ws3.cell_value(11, 7))
-            actual_lpn_hours = safe_float_conversion(ws3.cell_value(10, 7))
-            actual_rn_lpn_hours = actual_rn_hours + actual_lpn_hours
-        except Exception as e:
-            return None, (filename, f"Failed to extract hours data: {str(e)[:50]}")
+    # Step 7: Extract hours data
+    print(f"    📊 Extracting hours data...")
+    try:
+        actual_hours = safe_float_conversion(ws3.cell_value(13, 7))
+        actual_cna_hours = safe_float_conversion(ws3.cell_value(12, 7))
+        actual_rn_hours = safe_float_conversion(ws3.cell_value(11, 7))
+        actual_lpn_hours = safe_float_conversion(ws3.cell_value(10, 7))
+        actual_rn_lpn_hours = actual_rn_hours + actual_lpn_hours
+        
+        print(f"    Hours data - Total: {actual_hours}, CNA: {actual_cna_hours}, RN: {actual_rn_hours}, LPN: {actual_lpn_hours}")
+        print(f"    ✅ Hours data extracted successfully")
+        
+    except Exception as e:
+        print(f"    ❌ Failed to extract hours data: {e}")
+        return None, (filename, f"Failed to extract hours data: {str(e)[:50]}")
 
-        # Extract agency data from Sheet2
-        try:
-            agency_data = extract_agency_cna_rnlpn_from_sheet2(ws2)
-            agency_percentages = compute_agency_percentages(ws3, agency_data)
-        except Exception as e:
-            return None, (filename, f"Failed to extract agency data: {str(e)[:50]}")
+    # Step 8: Extract agency data
+    print(f"    🏢 Extracting agency data...")
+    try:
+        agency_data = extract_agency_cna_rnlpn_from_sheet2(ws2)
+        agency_percentages = compute_agency_percentages(ws3, agency_data)
+        print(f"    ✅ Agency data extracted successfully")
+        print(f"    Agency percentages - CNA: {agency_percentages['actual_agency_cna_pct']}%, Nurse: {agency_percentages['actual_agency_nurse_pct']}%, Total: {agency_percentages['actual_agency_total_pct']}%")
+    except Exception as e:
+        print(f"    ❌ Failed to extract agency data: {e}")
+        return None, (filename, f"Failed to extract agency data: {str(e)[:50]}")
 
-        matched_template_name = match_report_to_template(report_facility, template_map)
-        if not matched_template_name:
-            core_name = extract_core_from_report(report_facility)
-            return None, (filename, f"No matched facility name. Report: '{core_name}'")
+    # Step 9: Template matching (THE CRITICAL STEP)
+    print(f"    🔗 Starting template matching...")
+    print(f"    Report facility: '{report_facility}'")
+    print(f"    Available template keys: {list(template_map.keys())}")
+    
+    matched_template_name = match_report_to_template(report_facility, template_map)
+    
+    if not matched_template_name:
+        print(f"    ❌ TEMPLATE MATCHING FAILED")
+        core_name = extract_core_from_report(report_facility)
+        print(f"    Extracted core name: '{core_name}'")
+        print(f"    No match found in template map")
+        return None, (filename, f"No matched facility name. Report: '{core_name}'")
+    else:
+        print(f"    ✅ TEMPLATE MATCHING SUCCESS")
+        print(f"    Matched to: '{matched_template_name}'")
 
+    # Step 10: Build final report data
+    print(f"    📋 Building report data structure...")
+    try:
         report_data = {
             "filename": filename,
             "report_facility": report_facility,
@@ -451,17 +522,22 @@ def process_report_file(args):
             "actual_hours": actual_hours,
             "actual_cna_hours": actual_cna_hours,
             "actual_rn_lpn_hours": actual_rn_lpn_hours,
-            
-            # New agency data
             "actual_agency_cna_pct": agency_percentages['actual_agency_cna_pct'],
             "actual_agency_nurse_pct": agency_percentages['actual_agency_nurse_pct'],
             "actual_agency_total_pct": agency_percentages['actual_agency_total_pct']
         }
         
+        print(f"    ✅ REPORT PROCESSING COMPLETE - SUCCESS!")
+        print(f"    Final matched template: '{matched_template_name}'")
         return report_data, None
-
+        
     except Exception as e:
-        return None, (filename, f"Failed to parse report: {str(e)[:100]}")
+        print(f"    ❌ Failed to build report data: {e}")
+        return None, (filename, f"Failed to build report data: {str(e)[:50]}")
+
+    # This should never be reached, but just in case
+    print(f"    ⚠️ Unexpected end of function reached")
+    return None, (filename, "Unexpected processing error")
 
 def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path, progress_callback=None):
     print("Starting HPPD comparison...")
@@ -529,6 +605,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     print()
 
     # Collect and process reports
+    # Collect and process reports
     progress(40, "Collecting report files...")
     report_files = []
     for root, _, files in os.walk(reports_folder):
@@ -536,15 +613,95 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
             report_files.append((os.path.join(root, fname), fname, target_date, template_map))
     print(f"Found {len(report_files)} report files.\n")
 
+    # Process reports and collect detailed failure information
     progress(50, "Processing report files...")
     report_data_list, skipped_reports = [], []
+
+    # Track failure types for summary
+    date_failures = []
+    matching_failures = []
+    file_failures = []
+    sheet_failures = []
+    data_failures = []
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
         for rep, skip in ex.map(process_report_file, report_files):
             if rep: 
                 report_data_list.append(rep)
-            elif skip: 
+            elif skip:
                 skipped_reports.append(skip)
-    print(f"Processed reports: {len(report_data_list)}, skipped: {len(skipped_reports)}\n")
+                # Categorize the failure type
+                filename, reason = skip
+                if "Date mismatch" in reason:
+                    date_failures.append((filename, reason))
+                elif "No matched facility" in reason:
+                    matching_failures.append((filename, reason))
+                elif "Mac OS hidden" in reason or "Not .xls" in reason:
+                    file_failures.append((filename, reason))
+                elif "No Sheet" in reason:
+                    sheet_failures.append((filename, reason))
+                else:
+                    data_failures.append((filename, reason))
+
+    # Print comprehensive summary
+    print(f"\n" + "="*80)
+    print(f"📊 COMPREHENSIVE REPORT PROCESSING SUMMARY")
+    print(f"="*80)
+    print(f"Total reports attempted: {len(report_files)}")
+    print(f"✅ Successfully processed: {len(report_data_list)}")
+    print(f"❌ Total skipped: {len(skipped_reports)}")
+    print(f"")
+    print(f"FAILURE BREAKDOWN:")
+    print(f"📅 Date mismatches: {len(date_failures)}")
+    print(f"🔗 Template matching failures: {len(matching_failures)}")
+    print(f"📁 File issues (hidden/wrong extension): {len(file_failures)}")
+    print(f"📋 Missing sheets: {len(sheet_failures)}")
+    print(f"📊 Data extraction issues: {len(data_failures)}")
+    print(f"")
+
+    # Show specific examples of each failure type
+    if date_failures:
+        print(f"📅 DATE FAILURE EXAMPLES:")
+        for filename, reason in date_failures[:3]:
+            print(f"  • {filename}: {reason}")
+        if len(date_failures) > 3:
+            print(f"  ... and {len(date_failures) - 3} more")
+        print()
+
+    if matching_failures:
+        print(f"🔗 MATCHING FAILURE EXAMPLES:")
+        for filename, reason in matching_failures[:5]:
+            print(f"  • {filename}: {reason}")
+        if len(matching_failures) > 5:
+            print(f"  ... and {len(matching_failures) - 5} more")
+        print()
+
+    if file_failures:
+        print(f"📁 FILE ISSUE EXAMPLES:")
+        for filename, reason in file_failures[:3]:
+            print(f"  • {filename}: {reason}")
+        if len(file_failures) > 3:
+            print(f"  ... and {len(file_failures) - 3} more")
+        print()
+
+    if sheet_failures:
+        print(f"📋 SHEET ISSUE EXAMPLES:")
+        for filename, reason in sheet_failures[:3]:
+            print(f"  • {filename}: {reason}")
+        if len(sheet_failures) > 3:
+            print(f"  ... and {len(sheet_failures) - 3} more")
+        print()
+
+    if data_failures:
+        print(f"📊 DATA ISSUE EXAMPLES:")
+        for filename, reason in data_failures[:3]:
+            print(f"  • {filename}: {reason}")
+        if len(data_failures) > 3:
+            print(f"  ... and {len(data_failures) - 3} more")
+        print()
+
+    print(f"="*80)
+    print(f"")
 
     # ─── PHASE 3: DIAGNOSE REPORT-TO-TEMPLATE MATCHING ──────────────────────────
     progress(65, "Matching reports to templates...")
