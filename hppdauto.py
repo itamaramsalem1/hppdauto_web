@@ -22,19 +22,27 @@ def normalize_name(name):
 
 @lru_cache(maxsize=1000)
 def extract_core_from_report(report_name):
+    print(f"        EXTRACT DEBUG: Input='{report_name}'")
+    
     if not report_name:
+        print(f"        EXTRACT DEBUG: Empty input, returning ''")
         return ""
+    
     report_name = str(report_name).lower()
+    print(f"        EXTRACT DEBUG: After lowercase='{report_name}'")
 
     # Remove prefix like "Total Nursing Wrkd - " if present
     if report_name.startswith("total nursing wrkd - "):
         core = report_name[21:].strip()
+        print(f"        EXTRACT DEBUG: After prefix removal='{core}'")
     else:
         core = report_name.strip()
+        print(f"        EXTRACT DEBUG: No prefix to remove, core='{core}'")
 
     # Normalize
     core = re.sub(r"[^a-z0-9\s]", "", core)
     core = re.sub(r"\s+", " ", core).strip()
+    print(f"        EXTRACT DEBUG: After normalization='{core}'")
 
     # Apply overrides
     overrides = {
@@ -44,50 +52,57 @@ def extract_core_from_report(report_name):
         "west reading": "lebanon",
         "sunbury": "sunbury"  # just to be safe
     }
-    return overrides.get(core, core)
+    
+    original_core = core
+    core = overrides.get(core, core)
+    if core != original_core:
+        print(f"        EXTRACT DEBUG: Override applied: '{original_core}' → '{core}'")
+    else:
+        print(f"        EXTRACT DEBUG: No override, final='{core}'")
+    
+    return core
 
 def build_template_name_map(template_entries):
     return {entry["cleaned_name"]: entry["facility"] for entry in template_entries}
 
-def match_report_to_template_cached(report_name, template_keys_tuple, cutoff=0.6):
-    """Cached version of matching function"""
-    core_name = extract_core_from_report(report_name)
-    if not core_name:
-        return None
-    
-    template_keys = list(template_keys_tuple)
-    
-    # Try exact match first
-    if core_name in template_keys:
-        return core_name
-    
-    # Try fuzzy matching with higher cutoff
-    match = get_close_matches(core_name, template_keys, n=1, cutoff=cutoff)
-    if match:
-        return match[0]
-    
-    # Try with lower cutoff as fallback
-    match = get_close_matches(core_name, template_keys, n=1, cutoff=0.3)
-    return match[0] if match else None
-
 def match_report_to_template(report_name, template_name_map, cutoff=0.6):
+    print(f"\n🔍 MATCHING DEBUG: '{report_name}'")
+    
+    # Step 1: Extract core name
     core_name = extract_core_from_report(report_name)
+    print(f"    Step 1 - Extracted core: '{core_name}'")
+    
+    # Show what's available in template map
     template_keys = list(template_name_map.keys())
+    print(f"    Available template keys: {template_keys}")
 
-    # 1. Try override or exact match
+    # Step 2: Try exact match
     if core_name in template_name_map:
-        return template_name_map[core_name]
+        result = template_name_map[core_name]
+        print(f"    Step 2 - ✅ EXACT MATCH: '{core_name}' → '{result}'")
+        return result
+    else:
+        print(f"    Step 2 - ❌ No exact match for '{core_name}'")
 
-    # 2. Try fuzzy match
+    # Step 3: Try fuzzy match with high cutoff
     match = get_close_matches(core_name, template_keys, n=1, cutoff=cutoff)
     if match:
-        return template_name_map[match[0]]
+        result = template_name_map[match[0]]
+        print(f"    Step 3 - ✅ FUZZY MATCH (cutoff={cutoff}): '{core_name}' → '{match[0]}' → '{result}'")
+        return result
+    else:
+        print(f"    Step 3 - ❌ No fuzzy match at cutoff {cutoff}")
 
-    # 3. Try low-confidence match as fallback
+    # Step 4: Try low-confidence match as fallback
     match = get_close_matches(core_name, template_keys, n=1, cutoff=0.3)
     if match:
-        return template_name_map[match[0]]
+        result = template_name_map[match[0]]
+        print(f"    Step 4 - ✅ LOW-CONFIDENCE MATCH (cutoff=0.3): '{core_name}' → '{match[0]}' → '{result}'")
+        return result
+    else:
+        print(f"    Step 4 - ❌ No match even at cutoff 0.3")
 
+    print(f"    FINAL RESULT: ❌ NO MATCH FOUND")
     return None
 
 
