@@ -19,7 +19,6 @@ def normalize_name(name):
     name = re.sub(r"\s+", " ", name).strip()
     return name
 
-
 @lru_cache(maxsize=1000)
 def extract_core_from_report(report_name):
     print(f"        EXTRACT DEBUG: Input='{report_name}'")
@@ -104,7 +103,6 @@ def match_report_to_template(report_name, template_name_map, cutoff=0.6):
 
     print(f"    FINAL RESULT: ❌ NO MATCH FOUND")
     return None
-
 
 def safe_float_conversion(value, default=0.0):
     """Safely convert a value to float"""
@@ -218,13 +216,15 @@ def extract_agency_cna_rnlpn_from_sheet2(ws2):
         'agency_total_hours': agency_cna_hours + agency_rnlpn_hours
     }
 
-def compute_agency_percentages(ws3, agency_data):
+def compute_agency_percentages(agency_data, actual_cna_hours, actual_rn_hours, actual_lpn_hours):
     """
-    Compute agency staffing percentages using Sheet3 total hours data.
+    Compute agency staffing percentages using provided hours data.
     
     Args:
-        ws3: xlrd worksheet object for Sheet3
         agency_data: dict from extract_agency_cna_rnlpn_from_sheet2()
+        actual_cna_hours: float - actual CNA hours from hours extraction
+        actual_rn_hours: float - actual RN hours from hours extraction  
+        actual_lpn_hours: float - actual LPN hours from hours extraction
         
     Returns:
         dict: {
@@ -236,14 +236,6 @@ def compute_agency_percentages(ws3, agency_data):
             'actual_lpn_hours': float
         }
     """
-    # Extract total hours from Sheet3
-    # H13 (row 12, col 7) → actual total CNA hours
-    # H12 (row 11, col 7) → LPN hours  
-    # H11 (row 10, col 7) → RN hours
-    actual_cna_hours = safe_float_conversion(safe_xlrd_cell_value(ws3, 12, 7))
-    actual_lpn_hours = safe_float_conversion(safe_xlrd_cell_value(ws3, 11, 7))
-    actual_rn_hours = safe_float_conversion(safe_xlrd_cell_value(ws3, 10, 7))
-    
     # Calculate total nurse hours (RN + LPN)
     actual_rnlpn_hours = actual_rn_hours + actual_lpn_hours
     actual_total_hours = actual_cna_hours + actual_rnlpn_hours
@@ -266,6 +258,107 @@ def compute_agency_percentages(ws3, agency_data):
         'actual_rn_hours': actual_rn_hours,
         'actual_lpn_hours': actual_lpn_hours
     }
+
+def extract_hours_by_dept_code(ws3):
+    """Extract hours data by searching for department codes dynamically with comprehensive error handling"""
+    rn_hours = lpn_hours = cna_hours = total_hours = 0.0
+    
+    # First, validate we're looking at the right sheet structure
+    try:
+        # Check if we have the expected headers around row 8-9
+        dept_header = ws3.cell_value(8, 2) if ws3.nrows > 8 and ws3.ncols > 2 else None
+        hours_header = ws3.cell_value(8, 8) if ws3.nrows > 8 and ws3.ncols > 8 else None
+        
+        dept_header_str = str(dept_header).lower() if dept_header else ""
+        hours_header_str = str(hours_header).lower() if hours_header else ""
+        
+        if "department" not in dept_header_str or "hours" not in hours_header_str:
+            print(f"    ⚠️ Warning: Unexpected sheet layout. Headers: '{dept_header}', '{hours_header}'")
+            # Continue anyway - might still work
+            
+    except Exception as e:
+        print(f"    ⚠️ Warning: Could not validate sheet headers: {e}")
+    
+    # Track what we find for debugging
+    found_codes = []
+    
+    # Scan through reasonable range looking for department codes
+    max_row = min(ws3.nrows, 25)  # Safety limit
+    for row_idx in range(9, max_row):
+        try:
+            # Ensure we don't go out of bounds
+            if ws3.ncols <= 8:  # Need at least column I (index 8)
+                print(f"    ⚠️ Warning: Sheet only has {ws3.ncols} columns, need at least 9")
+                break
+                
+            dept_code = ws3.cell_value(row_idx, 2)  # Column C
+            hours_value = ws3.cell_value(row_idx, 8)  # Column I
+            
+            if dept_code:
+                code_str = str(dept_code).strip()
+                found_codes.append(code_str)
+                
+                # Primary department code matching
+                if code_str == "3210":  # Registered Nurses
+                    rn_hours = safe_float_conversion(hours_value)
+                    print(f"    Found RN hours: {rn_hours} (code: {code_str})")
+                elif code_str == "3215":  # Licensed Practical Nurse  
+                    lpn_hours = safe_float_conversion(hours_value)
+                    print(f"    Found LPN hours: {lpn_hours} (code: {code_str})")
+                elif code_str == "3225":  # Certified Nursing Aide
+                    cna_hours = safe_float_conversion(hours_value)
+                    print(f"    Found CNA hours: {cna_hours} (code: {code_str})")
+                
+                # Fallback: Try department name matching if codes don't work
+                dept_name = ws3.cell_value(row_idx, 3) if ws3.ncols > 3 else None  # Column D
+                if dept_name:
+                    dept_name_str = str(dept_name).lower()
+                    if "registered nurse" in dept_name_str and rn_hours == 0.0:
+                        rn_hours = safe_float_conversion(hours_value)
+                        print(f"    Found RN hours by name: {rn_hours}")
+                    elif "licensed practical" in dept_name_str and lpn_hours == 0.0:
+                        lpn_hours = safe_float_conversion(hours_value)
+                        print(f"    Found LPN hours by name: {lpn_hours}")
+                    elif "certified nursing aide" in dept_name_str and cna_hours == 0.0:
+                        cna_hours = safe_float_conversion(hours_value)
+                        print(f"    Found CNA hours by name: {cna_hours}")
+            
+            # Check for total hours row with flexible text matching
+            dept_text = ws3.cell_value(row_idx, 2)  # Could be in column C or B
+            if not dept_text:
+                dept_text = ws3.cell_value(row_idx, 1)  # Try column B
+                
+            if dept_text:
+                dept_text_lower = str(dept_text).lower()
+                total_keywords = ["total hours worked", "total hours", "grand total"]
+                
+                if any(keyword in dept_text_lower for keyword in total_keywords):
+                    total_hours = safe_float_conversion(hours_value)
+                    print(f"    Found total hours: {total_hours}")
+                    break  # Usually the last row we need
+                
+        except (IndexError, ValueError, TypeError) as e:
+            print(f"    Warning: Row {row_idx} parsing issue: {e}")
+            continue
+        except Exception as e:
+            print(f"    Warning: Unexpected error at row {row_idx}: {e}")
+            continue
+    
+    # Validation and debugging
+    print(f"    Department codes found: {found_codes}")
+    
+    # Validate extracted data makes sense
+    calculated_total = rn_hours + lpn_hours + cna_hours
+    if total_hours > 0 and abs(calculated_total - total_hours) > 1.0:  # Allow small rounding differences
+        print(f"    ⚠️ Warning: Calculated total ({calculated_total}) doesn't match reported total ({total_hours})")
+        # Could indicate we missed some departments or found wrong data
+    
+    # Check for completely missing data
+    if total_hours == 0.0 and calculated_total == 0.0:
+        print(f"    ⚠️ Warning: No hours data found in any department")
+        # This might indicate a structural issue with the file
+    
+    return rn_hours, lpn_hours, cna_hours, total_hours
 
 def process_template_file(args):
     """Process a single template file - for parallel processing"""
@@ -375,107 +468,6 @@ def process_template_file(args):
             pass
         return None, (filename, f"Data parsing error: {str(e)[:100]}")
 
-def extract_hours_by_dept_code(ws3):
-    """Extract hours data by searching for department codes dynamically with comprehensive error handling"""
-    rn_hours = lpn_hours = cna_hours = total_hours = 0.0
-    
-    # First, validate we're looking at the right sheet structure
-    try:
-        # Check if we have the expected headers around row 8-9
-        dept_header = ws3.cell_value(8, 2) if ws3.nrows > 8 and ws3.ncols > 2 else None
-        hours_header = ws3.cell_value(8, 8) if ws3.nrows > 8 and ws3.ncols > 8 else None
-        
-        dept_header_str = str(dept_header).lower() if dept_header else ""
-        hours_header_str = str(hours_header).lower() if hours_header else ""
-        
-        if "department" not in dept_header_str or "hours" not in hours_header_str:
-            print(f"    ⚠️ Warning: Unexpected sheet layout. Headers: '{dept_header}', '{hours_header}'")
-            # Continue anyway - might still work
-            
-    except Exception as e:
-        print(f"    ⚠️ Warning: Could not validate sheet headers: {e}")
-    
-    # Track what we find for debugging
-    found_codes = []
-    
-    # Scan through reasonable range looking for department codes
-    max_row = min(ws3.nrows, 25)  # Safety limit
-    for row_idx in range(9, max_row):
-        try:
-            # Ensure we don't go out of bounds
-            if ws3.ncols <= 8:  # Need at least column I (index 8)
-                print(f"    ⚠️ Warning: Sheet only has {ws3.ncols} columns, need at least 9")
-                break
-                
-            dept_code = ws3.cell_value(row_idx, 2)  # Column C
-            hours_value = ws3.cell_value(row_idx, 8)  # Column I
-            
-            if dept_code:
-                code_str = str(dept_code).strip()
-                found_codes.append(code_str)
-                
-                # Primary department code matching
-                if code_str == "3210":  # Registered Nurses
-                    rn_hours = safe_float_conversion(hours_value)
-                    print(f"    Found RN hours: {rn_hours} (code: {code_str})")
-                elif code_str == "3215":  # Licensed Practical Nurse  
-                    lpn_hours = safe_float_conversion(hours_value)
-                    print(f"    Found LPN hours: {lpn_hours} (code: {code_str})")
-                elif code_str == "3225":  # Certified Nursing Aide
-                    cna_hours = safe_float_conversion(hours_value)
-                    print(f"    Found CNA hours: {cna_hours} (code: {code_str})")
-                
-                # Fallback: Try department name matching if codes don't work
-                dept_name = ws3.cell_value(row_idx, 3) if ws3.ncols > 3 else None  # Column D
-                if dept_name:
-                    dept_name_str = str(dept_name).lower()
-                    if "registered nurse" in dept_name_str and rn_hours == 0.0:
-                        rn_hours = safe_float_conversion(hours_value)
-                        print(f"    Found RN hours by name: {rn_hours}")
-                    elif "licensed practical" in dept_name_str and lpn_hours == 0.0:
-                        lpn_hours = safe_float_conversion(hours_value)
-                        print(f"    Found LPN hours by name: {lpn_hours}")
-                    elif "certified nursing aide" in dept_name_str and cna_hours == 0.0:
-                        cna_hours = safe_float_conversion(hours_value)
-                        print(f"    Found CNA hours by name: {cna_hours}")
-            
-            # Check for total hours row with flexible text matching
-            dept_text = ws3.cell_value(row_idx, 2)  # Could be in column C or B
-            if not dept_text:
-                dept_text = ws3.cell_value(row_idx, 1)  # Try column B
-                
-            if dept_text:
-                dept_text_lower = str(dept_text).lower()
-                total_keywords = ["total hours worked", "total hours", "grand total"]
-                
-                if any(keyword in dept_text_lower for keyword in total_keywords):
-                    total_hours = safe_float_conversion(hours_value)
-                    print(f"    Found total hours: {total_hours}")
-                    break  # Usually the last row we need
-                
-        except (IndexError, ValueError, TypeError) as e:
-            print(f"    Warning: Row {row_idx} parsing issue: {e}")
-            continue
-        except Exception as e:
-            print(f"    Warning: Unexpected error at row {row_idx}: {e}")
-            continue
-    
-    # Validation and debugging
-    print(f"    Department codes found: {found_codes}")
-    
-    # Validate extracted data makes sense
-    calculated_total = rn_hours + lpn_hours + cna_hours
-    if total_hours > 0 and abs(calculated_total - total_hours) > 1.0:  # Allow small rounding differences
-        print(f"    ⚠️ Warning: Calculated total ({calculated_total}) doesn't match reported total ({total_hours})")
-        # Could indicate we missed some departments or found wrong data
-    
-    # Check for completely missing data
-    if total_hours == 0.0 and calculated_total == 0.0:
-        print(f"    ⚠️ Warning: No hours data found in any department")
-        # This might indicate a structural issue with the file
-    
-    return rn_hours, lpn_hours, cna_hours, total_hours
-
 def process_report_file(args):
     """Process a single report file - for parallel processing with enhanced debugging"""
     filepath, filename, target_date, template_map = args
@@ -520,6 +512,11 @@ def process_report_file(args):
         ws2 = wb.sheet_by_name("Sheet2")
         print(f"    ✅ Sheets loaded successfully")
         print(f"    ws2 type: {type(ws2)}, ws3 type: {type(ws3)}")
+        
+        # Validate we got proper worksheet objects
+        if not hasattr(ws2, 'nrows') or not hasattr(ws3, 'nrows'):
+            return None, (filename, f"Invalid worksheet objects - ws2: {type(ws2)}, ws3: {type(ws3)}")
+            
     except Exception as e:
         print(f"    ❌ Failed to load sheets: {e}")
         return None, (filename, f"Failed to load sheets: {str(e)[:50]}")
@@ -572,7 +569,7 @@ def process_report_file(args):
     # Step 7: Extract hours data using BOTH methods for comparison
     print(f"    📊 Extracting hours data...")
     try:
-        # OLD METHOD (for comparison)
+        # OLD METHOD (for comparison and fallback)
         print(f"    📊 OLD METHOD - Fixed cell positions:")
         old_actual_hours = safe_float_conversion(ws3.cell_value(13, 7))
         old_actual_cna_hours = safe_float_conversion(ws3.cell_value(12, 7))
@@ -585,23 +582,36 @@ def process_report_file(args):
         # NEW METHOD (dynamic department code search)
         print(f"    📊 NEW METHOD - Department code search:")
         rn_hours, lpn_hours, cna_hours, total_hours = extract_hours_by_dept_code(ws3)
-        actual_rn_lpn_hours = rn_hours + lpn_hours
+        new_actual_rn_lpn_hours = rn_hours + lpn_hours
         
         print(f"    NEW - Total: {total_hours}, CNA: {cna_hours}, RN: {rn_hours}, LPN: {lpn_hours}")
         
-        # Use the new method but fallback to old if needed
-        if total_hours > 0 or (rn_hours + lpn_hours + cna_hours) > 0:
+        # Decide which method to use with improved logic
+        new_total = rn_hours + lpn_hours + cna_hours
+        old_total = old_actual_rn_hours + old_actual_lpn_hours + old_actual_cna_hours
+        
+        # Check for data discrepancies between methods
+        if total_hours > 0 and old_actual_hours > 0:
+            if abs(total_hours - old_actual_hours) > 1.0:
+                print(f"    ⚠️ Warning: Total hours mismatch - NEW: {total_hours}, OLD: {old_actual_hours}")
+        
+        # Use the new method if it found data, otherwise fallback to old
+        if new_total > 0:
             print(f"    ✅ Using NEW method results")
-            actual_hours = total_hours if total_hours > 0 else (rn_hours + lpn_hours + cna_hours)
+            actual_hours = total_hours if total_hours > 0 else new_total
             actual_cna_hours = cna_hours
+            actual_rn_hours = rn_hours
+            actual_lpn_hours = lpn_hours
             actual_rn_lpn_hours = rn_hours + lpn_hours
         else:
             print(f"    ⚠️ NEW method found no data, falling back to OLD method")
             actual_hours = old_actual_hours
             actual_cna_hours = old_actual_cna_hours
+            actual_rn_hours = old_actual_rn_hours
+            actual_lpn_hours = old_actual_lpn_hours
             actual_rn_lpn_hours = old_actual_rn_lpn_hours
         
-        print(f"    ✅ Final hours data - Total: {actual_hours}, CNA: {actual_cna_hours}, RN+LPN: {actual_rn_lpn_hours}")
+        print(f"    ✅ Final hours data - Total: {actual_hours}, CNA: {actual_cna_hours}, RN: {actual_rn_hours}, LPN: {actual_lpn_hours}")
         
     except Exception as e:
         print(f"    ❌ Failed to extract hours data: {e}")
@@ -611,7 +621,13 @@ def process_report_file(args):
     print(f"    🏢 Extracting agency data...")
     try:
         agency_data = extract_agency_cna_rnlpn_from_sheet2(ws2)
-        agency_percentages = compute_agency_percentages(ws3, agency_data)
+        # Use the consistently extracted hours data for agency percentages
+        agency_percentages = compute_agency_percentages(
+            agency_data, 
+            actual_cna_hours, 
+            actual_rn_hours, 
+            actual_lpn_hours
+        )
         print(f"    ✅ Agency data extracted successfully")
         print(f"    Agency percentages - CNA: {agency_percentages['actual_agency_cna_pct']}%, Nurse: {agency_percentages['actual_agency_nurse_pct']}%, Total: {agency_percentages['actual_agency_total_pct']}%")
     except Exception as e:
@@ -680,47 +696,24 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
             template_files.append((os.path.join(root, fname), fname, target_date))
     print(f"Found {len(template_files)} template files.\n")
 
-    # ─── PHASE 1: DIAGNOSE TEMPLATE PROCESSING FAILURES ─────────────────────────
-    problem_files = ["Chambersburg", "Pottstown"]  # adjust as needed
+    # ─── PHASE 1: PROCESS TEMPLATE FILES ─────────────────────────
     template_entries = []
     skipped_templates = []
     progress(15, "Processing template files...")
 
-    for filepath, filename, td in template_files:
-        is_problem = any(prob.lower() in filename.lower() for prob in problem_files)
-        if is_problem:
-            print(f"\n🔍 [DETAILED] Inspecting {filename}")
-            try:
-                wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
-                sheet_day = str(datetime.strptime(td, "%Y-%m-%d").day)
-                print(f"    Available sheets: {wb.sheetnames}")
-                print(f"    Looking for sheet '{sheet_day}'")
-                if sheet_day in wb.sheetnames:
-                    ws = wb[sheet_day]
-                    for cell in ("D3", "B11", "E27"):
-                        val = safe_cell_value(ws, cell)
-                        print(f"    {cell}: {val!r} (type {type(val)})")
-                wb.close()
-            except Exception as e:
-                print(f"    💥 Manual inspection failed: {e}")
+    # Process templates in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        results = executor.map(process_template_file, template_files)
+        
+        for entry, skip_info in results:
+            if entry:
+                template_entries.append(entry)
+            elif skip_info:
+                skipped_templates.append(skip_info)
 
-        entry, skip_info = process_template_file((filepath, filename, td))
-        if entry:
-            template_entries.append(entry)
-            if is_problem:
-                print(f"    ✅ Parsed OK → cleaned_name={entry['cleaned_name']!r}")
-        elif skip_info:
-            skipped_templates.append(skip_info)
-            if is_problem:
-                print(f"    ❌ Skipped: {skip_info[1]}")
-        else:
-            print(f"[TEMPLATE FAIL] {filename} → returned (None, None)")
-            if is_problem:
-                print("    ⚠️ This is the mysterious None,None case!")
+    print(f"Processed templates: {len(template_entries)} entries, {len(skipped_templates)} skipped\n")
 
-    print(f"\nProcessed templates: {len(template_entries)} entries, {len(skipped_templates)} skipped\n")
-
-    # ─── PHASE 2: DIAGNOSE TEMPLATE MAP CONTENT ─────────────────────────────────
+    # ─── PHASE 2: BUILD TEMPLATE MAP ─────────────────────────────
     progress(30, "Building template map...")
     template_map = build_template_name_map(template_entries)
     print(f"[TEMPLATE MAP] {len(template_map)} keys")
@@ -728,8 +721,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         print(f"  • '{clean}' → '{full}'")
     print()
 
-    # Collect and process reports
-    # Collect and process reports
+    # ─── PHASE 3: PROCESS REPORT FILES ───────────────────────────
     progress(40, "Collecting report files...")
     report_files = []
     for root, _, files in os.walk(reports_folder):
@@ -827,7 +819,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     print(f"="*80)
     print(f"")
 
-    # ─── PHASE 3: DIAGNOSE REPORT-TO-TEMPLATE MATCHING ──────────────────────────
+    # ─── PHASE 4: MATCH REPORTS TO TEMPLATES ────────────────────
     progress(65, "Matching reports to templates...")
     results = {}
 
@@ -897,7 +889,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     print(f"Generated results for {len(results)} facilities")
 
-    # ─── EXCEL GENERATION ────────────────────────────────────────────────────────
+    # ─── PHASE 5: EXCEL GENERATION ───────────────────────────────
     progress(80, "Generating Excel output...")
     
     # Pre-calculate all difference rows and column widths
@@ -1060,7 +1052,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
     # Save the file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    final_output_path = os.path.join(output_path, f"HPPD_Comparison_{target_date}.xlsx")
+    final_output_path = os.path.join(output_path, f"HPPD_Comparison_{timestamp}.xlsx")
     wb.save(final_output_path)
     
     progress(100, "✅ Analysis complete!")
