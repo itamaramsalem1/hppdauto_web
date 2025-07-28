@@ -259,105 +259,45 @@ def compute_agency_percentages(agency_data, actual_cna_hours, actual_rn_hours, a
         'actual_lpn_hours': actual_lpn_hours
     }
 
+
 def extract_hours_by_dept_code(ws3):
-    """Extract hours data by searching for department codes dynamically with comprehensive error handling"""
+    """Extract hours by department code, reading hours from column H (index 7)."""
     rn_hours = lpn_hours = cna_hours = total_hours = 0.0
-    
-    # First, validate we're looking at the right sheet structure
-    try:
-        # Check if we have the expected headers around row 8-9
-        dept_header = ws3.cell_value(8, 2) if ws3.nrows > 8 and ws3.ncols > 2 else None
-        hours_header = ws3.cell_value(8, 8) if ws3.nrows > 8 and ws3.ncols > 8 else None
-        
-        dept_header_str = str(dept_header).lower() if dept_header else ""
-        hours_header_str = str(hours_header).lower() if hours_header else ""
-        
-        if "department" not in dept_header_str or "hours" not in hours_header_str:
-            print(f"    ⚠️ Warning: Unexpected sheet layout. Headers: '{dept_header}', '{hours_header}'")
-            # Continue anyway - might still work
-            
-    except Exception as e:
-        print(f"    ⚠️ Warning: Could not validate sheet headers: {e}")
-    
-    # Track what we find for debugging
     found_codes = []
-    
-    # Scan through reasonable range looking for department codes
-    max_row = min(ws3.nrows, 25)  # Safety limit
-    for row_idx in range(9, max_row):
+
+    # Scan rows 10–25 (index 9–24)
+    for r in range(9, min(ws3.nrows, 25)):
         try:
-            # Ensure we don't go out of bounds
-            if ws3.ncols <= 8:  # Need at least column I (index 8)
-                print(f"    ⚠️ Warning: Sheet only has {ws3.ncols} columns, need at least 9")
-                break
-                
-            dept_code = ws3.cell_value(row_idx, 2)  # Column C
-            hours_value = ws3.cell_value(row_idx, 8)  # Column I
-            
-            if dept_code:
-                code_str = str(dept_code).strip()
+            code = ws3.cell_value(r, 2)      # Col C (index 2)
+            hrs  = ws3.cell_value(r, 7)      # Col H (index 7)
+            if code:
+                code_str = str(code).strip()
                 found_codes.append(code_str)
-                
-                # Primary department code matching
-                if code_str == "3210":  # Registered Nurses
-                    rn_hours = safe_float_conversion(hours_value)
-                    print(f"    Found RN hours: {rn_hours} (code: {code_str})")
-                elif code_str == "3215":  # Licensed Practical Nurse  
-                    lpn_hours = safe_float_conversion(hours_value)
-                    print(f"    Found LPN hours: {lpn_hours} (code: {code_str})")
-                elif code_str == "3225":  # Certified Nursing Aide
-                    cna_hours = safe_float_conversion(hours_value)
-                    print(f"    Found CNA hours: {cna_hours} (code: {code_str})")
-                
-                # Fallback: Try department name matching if codes don't work
-                dept_name = ws3.cell_value(row_idx, 3) if ws3.ncols > 3 else None  # Column D
-                if dept_name:
-                    dept_name_str = str(dept_name).lower()
-                    if "registered nurse" in dept_name_str and rn_hours == 0.0:
-                        rn_hours = safe_float_conversion(hours_value)
-                        print(f"    Found RN hours by name: {rn_hours}")
-                    elif "licensed practical" in dept_name_str and lpn_hours == 0.0:
-                        lpn_hours = safe_float_conversion(hours_value)
-                        print(f"    Found LPN hours by name: {lpn_hours}")
-                    elif "certified nursing aide" in dept_name_str and cna_hours == 0.0:
-                        cna_hours = safe_float_conversion(hours_value)
-                        print(f"    Found CNA hours by name: {cna_hours}")
-            
-            # Check for total hours row with flexible text matching
-            dept_text = ws3.cell_value(row_idx, 2)  # Could be in column C or B
-            if not dept_text:
-                dept_text = ws3.cell_value(row_idx, 1)  # Try column B
-                
-            if dept_text:
-                dept_text_lower = str(dept_text).lower()
-                total_keywords = ["total hours worked", "total hours", "grand total"]
-                
-                if any(keyword in dept_text_lower for keyword in total_keywords):
-                    total_hours = safe_float_conversion(hours_value)
-                    print(f"    Found total hours: {total_hours}")
-                    break  # Usually the last row we need
-                
-        except (IndexError, ValueError, TypeError) as e:
-            print(f"    Warning: Row {row_idx} parsing issue: {e}")
-            continue
+                val = safe_float_conversion(hrs)
+
+                if code_str == "3210":       # RN
+                    rn_hours = val
+                elif code_str == "3215":     # LPN
+                    lpn_hours = val
+                elif code_str == "3225":     # CNA
+                    cna_hours = val
+
+            # Look also for a “Total Hours” row
+            txt = ws3.cell_value(r, 2) or ws3.cell_value(r, 1)
+            if txt and any(k in str(txt).lower() for k in ("total hours worked","grand total","total hours")):
+                total_hours = safe_float_conversion(ws3.cell_value(r, 7))
+                break
+
         except Exception as e:
-            print(f"    Warning: Unexpected error at row {row_idx}: {e}")
-            continue
-    
-    # Validation and debugging
-    print(f"    Department codes found: {found_codes}")
-    
-    # Validate extracted data makes sense
-    calculated_total = rn_hours + lpn_hours + cna_hours
-    if total_hours > 0 and abs(calculated_total - total_hours) > 1.0:  # Allow small rounding differences
-        print(f"    ⚠️ Warning: Calculated total ({calculated_total}) doesn't match reported total ({total_hours})")
-        # Could indicate we missed some departments or found wrong data
-    
-    # Check for completely missing data
-    if total_hours == 0.0 and calculated_total == 0.0:
-        print(f"    ⚠️ Warning: No hours data found in any department")
-        # This might indicate a structural issue with the file
-    
+            print(f"    ⚠️ Row {r} error: {e}")
+
+    calc_total = rn_hours + lpn_hours + cna_hours
+    if total_hours and abs(calc_total - total_hours) > 1.0:
+        print(f"  ⚠️ Sum mismatch: {calc_total} vs {total_hours}")
+
+    if not total_hours and calc_total == 0:
+        print("  ⚠️ No hours found at all!")
+
     return rn_hours, lpn_hours, cna_hours, total_hours
 
 def process_template_file(args):
