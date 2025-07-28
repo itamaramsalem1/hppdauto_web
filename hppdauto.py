@@ -451,275 +451,121 @@ def process_report_file(args):
 def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path, progress_callback=None):
     print("Starting HPPD comparison...")
     
-    # helper for updating progress
     def progress(pct, msg):
-        if progress_callback:  # Add this check
+        if progress_callback:
             progress_callback(pct, msg)
-        print(f"Progress {pct}%: {msg}")  # Optional: also print to console
+        print(f"Progress {pct}%: {msg}")
 
     progress(5, "Collecting template files...")
-    # Collect all template files
+
+    # Collect template files
     template_files = []
     for root, _, files in os.walk(templates_folder):
-        print("\n--- TEMPLATE FILES BEING SEEN ---")
-        for filename in files:
-            print("FILE:", filename)
-            filepath = os.path.join(root, filename)
-            template_files.append((filepath, filename, target_date))
-    
-    print(f"Processing {len(template_files)} template files...")
+        for fname in files:
+            template_files.append((os.path.join(root, fname), fname, target_date))
+    print(f"Found {len(template_files)} template files.\n")
 
-    # Add debug code here
-    print(f"\n=== TEMPLATE FILES DEBUG ===")
-    print(f"Total template files found: {len(template_files)}")
-
-    # Track specific missing facilities
-    missing_facilities = ["Chambersburg", "Pottstown"]
-    found_missing = []
-
-    for filepath, filename, target_date_param in template_files:
-        print(f"Found template: {filename}")
-        
-        # Check if this is one of our missing facilities
-        for missing in missing_facilities:
-            if missing.lower() in filename.lower():
-                found_missing.append(f"✅ FOUND {missing}: {filename}")
-                print(f"  --> This is {missing}!")
-
-    print(f"\nMissing facilities tracking:")
-    for item in found_missing:
-        print(item)
-
-    # Check what wasn't found
-    not_found = [facility for facility in missing_facilities 
-                if not any(facility.lower() in filename.lower() for filepath, filename, target_date_param in template_files)]
-    if not_found:
-        print(f"❌ NOT FOUND: {not_found}")
-
-    print(f"=== END TEMPLATE FILES DEBUG ===\n")
-
-    # Process template files with enhanced debugging
+    # ─── PHASE 1: DIAGNOSE TEMPLATE PROCESSING FAILURES ─────────────────────────
+    problem_files = ["Chambersburg", "Pottstown"]  # adjust as needed
     template_entries = []
     skipped_templates = []
-
     progress(15, "Processing template files...")
 
-    print(f"\n=== PROCESSING TEMPLATES DEBUG ===")
-    processed_count = 0
-    skipped_count = 0
+    for filepath, filename, td in template_files:
+        is_problem = any(prob.lower() in filename.lower() for prob in problem_files)
+        if is_problem:
+            print(f"\n🔍 [DETAILED] Inspecting {filename}")
+            try:
+                wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
+                sheet_day = str(datetime.strptime(td, "%Y-%m-%d").day)
+                print(f"    Available sheets: {wb.sheetnames}")
+                print(f"    Looking for sheet '{sheet_day}'")
+                if sheet_day in wb.sheetnames:
+                    ws = wb[sheet_day]
+                    for cell in ("D3", "B11", "E27"):
+                        val = safe_cell_value(ws, cell)
+                        print(f"    {cell}: {val!r} (type {type(val)})")
+                wb.close()
+            except Exception as e:
+                print(f"    💥 Manual inspection failed: {e}")
 
-    for template_file_args in template_files:
-        filepath, filename, target_date_param = template_file_args
-        
-        # Check if this is a missing facility before processing
-        is_missing_facility = any(missing.lower() in filename.lower() for missing in missing_facilities)
-        if is_missing_facility:
-            print(f"\n🔍 PROCESSING MISSING FACILITY: {filename}")
-            print(f"   Full path: {filepath}")
-            print(f"   Target date: {target_date_param}")
-        
-        entry, skip_info = process_template_file(template_file_args)
-        
+        entry, skip_info = process_template_file((filepath, filename, td))
         if entry:
             template_entries.append(entry)
-            processed_count += 1
-            if is_missing_facility:
-                print(f"   ✅ SUCCESS: Added to template_entries")
-                print(f"   Facility name: {entry['facility']}")
-                print(f"   Cleaned name: {entry['cleaned_name']}")
+            if is_problem:
+                print(f"    ✅ Parsed OK → cleaned_name={entry['cleaned_name']!r}")
         elif skip_info:
             skipped_templates.append(skip_info)
-            skipped_count += 1
-            if is_missing_facility:
-                print(f"   ❌ SKIPPED: {skip_info}")
+            if is_problem:
+                print(f"    ❌ Skipped: {skip_info[1]}")
         else:
-            # This is the problem case - neither entry nor skip_info
-            if is_missing_facility:
-                print(f"   ⚠️ RETURNED NONE,NONE - THIS IS THE PROBLEM!")
-                
-                # Try to process again with more detailed error catching
-                print(f"   Attempting detailed processing...")
-                try:
-                    result = process_template_file(template_file_args)
-                    print(f"   Retry result: {result}")
-                except Exception as e:
-                    print(f"   Exception during retry: {e}")
-                    import traceback
-                    traceback.print_exc()
+            print(f"[TEMPLATE FAIL] {filename} → returned (None, None)")
+            if is_problem:
+                print("    ⚠️ This is the mysterious None,None case!")
 
-    print(f"\nProcessing summary:")
-    print(f"Successfully processed: {processed_count}")
-    print(f"Skipped: {skipped_count}")
-    print(f"Total template_entries: {len(template_entries)}")
-    print(f"=== END PROCESSING DEBUG ===\n")
+    print(f"\nProcessed templates: {len(template_entries)} entries, {len(skipped_templates)} skipped\n")
 
-    print(f"Successfully processed {len(template_entries)} templates, skipped {len(skipped_templates)}")
-    
+    # ─── PHASE 2: DIAGNOSE TEMPLATE MAP CONTENT ─────────────────────────────────
     progress(30, "Building template map...")
-    # Build template map once
-    
-    # ─── TEMPLATE DIAGNOSTICS ────────────────────────────────────────────────────
-    print(f"\n[TEMPLATE DIAG] template_entries count: {len(template_entries)}")
-    print("[TEMPLATE DIAG] cleaned_name → facility:")
-    for e in template_entries:
-        print(f"  • {e['cleaned_name']} → {e['facility']}")
-    # ───────────────────────────────────────────────────────────────────────────────
-
     template_map = build_template_name_map(template_entries)
-    # ─── TEMPLATE MAP DIAGNOSTICS ────────────────────────────────────────────────
-    print(f"\n[TEMPLATE DIAG] template_name_map keys ({len(template_map)}):")
-    for key, val in template_map.items():
-        print(f"  • {key} → {val}")
-    # ───────────────────────────────────────────────────────────────────────────────
-    
+    print(f"[TEMPLATE MAP] {len(template_map)} keys")
+    for clean, full in template_map.items():
+        print(f"  • '{clean}' → '{full}'")
+    print()
+
+    # Collect and process reports
     progress(40, "Collecting report files...")
-    # Collect all report files
     report_files = []
     for root, _, files in os.walk(reports_folder):
-        for filename in files:
-            filepath = os.path.join(root, filename)
-            report_files.append((filepath, filename, target_date, template_map))
-    
-    print(f"Processing {len(report_files)} report files...")
-    
-    # Process report files in parallel
-    report_data_list = []
-    skipped_reports = []
-    
+        for fname in files:
+            report_files.append((os.path.join(root, fname), fname, target_date, template_map))
+    print(f"Found {len(report_files)} report files.\n")
+
     progress(50, "Processing report files...")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        results = executor.map(process_report_file, report_files)
-        
-        for report_data, skip_info in results:
-            if report_data:
-                report_data_list.append(report_data)
-            elif skip_info:
-                skipped_reports.append(skip_info)
+    report_data_list, skipped_reports = [], []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        for rep, skip in ex.map(process_report_file, report_files):
+            if rep: 
+                report_data_list.append(rep)
+            elif skip: 
+                skipped_reports.append(skip)
+    print(f"Processed reports: {len(report_data_list)}, skipped: {len(skipped_reports)}\n")
 
-    print(f"Successfully processed {len(report_data_list)} reports, skipped {len(skipped_reports)}")
-    
-    # Match reports to templates and build results
-    results = {}
-    template_lookup = {entry["facility"]: entry for entry in template_entries}
-    
+    # ─── PHASE 3: DIAGNOSE REPORT-TO-TEMPLATE MATCHING ──────────────────────────
     progress(65, "Matching reports to templates...")
-
-    # Right after: progress(65, "Matching reports to templates...")
-
-    print(f"\n=== REPORT-TO-TEMPLATE MATCHING DEBUG ===")
-    print(f"Templates processed: {len(template_entries)}")
-    print(f"Reports processed: {len(report_data_list)}")
-
-    # Show what template facilities we have
-    template_facility_names = [entry["facility"] for entry in template_entries]
-    print(f"\nTemplate facilities available:")
-    for name in sorted(template_facility_names):
-        print(f"  - {name}")
-
-    # Track our missing facilities specifically
-    missing_templates = ["Chambersburg Skilled Nursing and Rehabilitation", 
-                        "Pottstown Skilled Nursing and Rehabilitation"]
-
-    print(f"\nChecking for missing facilities in templates:")
-    for missing in missing_templates:
-        if missing in template_facility_names:
-            print(f"  ✅ {missing} - FOUND in templates")
-        else:
-            print(f"  ❌ {missing} - NOT FOUND in templates")
-
-    # Show what report facilities we have and their matched template names
-    print(f"\nReport facilities and their matched templates:")
-    report_matches = {}
-    for report_data in report_data_list:
-        report_facility = report_data["report_facility"]
-        matched_template = report_data["matched_template_name"]
-        report_date = report_data["report_date"]
-        report_matches[report_facility] = {
-            "matched_template": matched_template,
-            "date": report_date
-        }
-        print(f"  Report: '{report_facility}' -> Template: '{matched_template}' (Date: {report_date})")
-
-    # Check if our missing facilities have corresponding reports
-    print(f"\nChecking for missing facilities in reports:")
-    for missing in missing_templates:
-        found_in_reports = False
-        for report_facility, data in report_matches.items():
-            if data["matched_template"] == missing:
-                print(f"  ✅ {missing} - FOUND report: '{report_facility}' (Date: {data['date']})")
-                found_in_reports = True
-                break
-        if not found_in_reports:
-            print(f"  ❌ {missing} - NO MATCHING REPORTS FOUND")
-
-    # Now check the actual matching logic
-    print(f"\nDetailed matching process:")
-    successful_matches = 0
-    failed_matches = 0
+    results = {}
 
     for report_data in report_data_list:
-        matched_template_name = report_data["matched_template_name"]
-        report_date = report_data["report_date"]
+        print(f"🔍 Matching report '{report_data['filename']}'")
+        print(f"    report_facility       = {report_data['report_facility']!r}")
+        print(f"    matched_template_name = {report_data['matched_template_name']!r}")
         
-         # ─── MATCH FILTER DIAGNOSTICS ─────────────────────────────────────────────
-        print(f"[MATCH DIAG] report='{report_data['report_facility']}' on {report_data['report_date']}")
-        print(f"  matched_template_name = '{report_data['matched_template_name']}'")
-        dates = [e['date'] for e in template_entries 
-                if e['facility'] == report_data['matched_template_name']]
-        print(f"  template dates for that facility: {dates}")
-        # ────────────────────────────────────────────────────────────────────────────
-        # Find matching template - this is the same logic from your code
-        candidates = [entry for entry in template_entries 
-                    if entry["facility"] == matched_template_name 
-                    and entry["date"] == report_date]
+        # Only show entries for that facility
+        print("    RELEVANT template_entries:")
+        relevant_entries = [e for e in template_entries if e["facility"] == report_data["matched_template_name"]]
+        for e in relevant_entries:
+            print(f"      • facility={e['facility']!r}, date={e['date']!r}")
         
-        is_missing_facility = matched_template_name in missing_templates
-        
-        if candidates:
-            successful_matches += 1
-            if is_missing_facility:
-                print(f"  ✅ {matched_template_name} - SUCCESSFUL MATCH (Date: {report_date})")
-        else:
-            failed_matches += 1
-            if is_missing_facility:
-                print(f"  ❌ {matched_template_name} - FAILED MATCH (Date: {report_date})")
-                
-                # Debug why it failed
-                template_dates_for_facility = [entry["date"] for entry in template_entries 
-                                            if entry["facility"] == matched_template_name]
-                if template_dates_for_facility:
-                    print(f"     Template dates available: {template_dates_for_facility}")
-                    print(f"     Report date needed: {report_date}")
-                else:
-                    print(f"     No templates found for facility: {matched_template_name}")
+        # Check available dates
+        dates = [e["date"] for e in template_entries if e["facility"] == report_data["matched_template_name"]]
+        print(f"    template dates for '{report_data['matched_template_name']}': {dates}")
+        print(f"    report_date needed: {report_data['report_date']}")
 
-    print(f"\nMatching summary:")
-    print(f"Successful matches: {successful_matches}")
-    print(f"Failed matches: {failed_matches}")
-    print(f"Total reports: {len(report_data_list)}")
-    print(f"=== END REPORT-TO-TEMPLATE MATCHING DEBUG ===\n")
-    for report_data in report_data_list:
-        #DEBUG: inspect what's coming in
-        print(f"🔍 Processing report '{report_data['filename']}'")
-        print(f"    report_facility        = {report_data['report_facility']!r}")
-        print(f"    matched_template_name  = {report_data['matched_template_name']!r}")
-        print("    AVAILABLE template_entries:")
-        for e in template_entries:
-            print(f"      • facility={e['facility']!r}, date={e['date']}")
-        print("    TEMPLATE MAP KEYS (cleaned names):", list(template_name_map.keys()))
-
-        candidates = [entry for entry in template_entries
-                    if entry["facility"] == report_data["matched_template_name"]
-                    and entry["date"] == report_data["report_date"]]
+        candidates = [
+            e for e in template_entries
+            if e["facility"] == report_data["matched_template_name"]
+            and e["date"] == report_data["report_date"]
+        ]
         
         if not candidates:
-            skipped_reports.append((report_data["filename"], f"No matched date in template. Report date: {report_data['report_date']}"))
+            skipped_reports.append((report_data["filename"], f"No matched date {report_data['report_date']}"))
+            print("    ❌ No candidates, skipping\n")
             continue
 
+        # Build results
         t = candidates[0]
         key = (t["facility"], report_data["report_date"])
         
-        # Calculate actual HPPD values
         # Calculate actual HPPD values
         actual_hppd = report_data["actual_hours"] / t["census"] if t["census"] > 0 else 0
         actual_cna_hppd = report_data["actual_cna_hours"] / t["census"] if t["census"] > 0 else 0
@@ -751,10 +597,13 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 "Date": report_data["report_date"]
             }
         ]
+        print("    ✅ Matched and will be included\n")
 
     print(f"Generated results for {len(results)} facilities")
-    print("Creating Excel output...")
 
+    # ─── EXCEL GENERATION ────────────────────────────────────────────────────────
+    progress(80, "Generating Excel output...")
+    
     # Pre-calculate all difference rows and column widths
     all_difference_rows = {}
     column_headers = [
@@ -762,7 +611,6 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         "CNA Agency %", "RN+LPN Agency %", "Total Agency %",
         "Notes", "Date"
     ]
-
     
     # Initialize column widths with header lengths
     column_widths = {header: len(header) for header in column_headers}
@@ -784,7 +632,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         
         all_difference_rows[key] = difference_row
         
-        # Calculate column widths - compare header length vs content length
+        # Calculate column widths
         for row_data in [projected_row, actual_row, difference_row]:
             for header in column_headers:
                 if header == "Facility" and row_data["Type"] in ["Actual", "Difference"]:
@@ -792,11 +640,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                 else:
                     content = str(row_data.get(header, ""))
                 
-                # Make sure we use the maximum of header length and content length
                 content_width = len(content)
                 column_widths[header] = max(column_widths[header], content_width)
     
-    progress(80, "Generating Excel output...")	
     # Create output Excel file
     wb = Workbook()
     ws = wb.active
@@ -832,7 +678,6 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
             for row_data in [projected_row, actual_row, difference_row]:
                 for col_idx, col_name in enumerate(column_headers, 1):
-                    # Don't show facility name for Actual and Difference rows
                     if col_name == "Facility" and row_data["Type"] in ["Actual", "Difference"]:
                         val = ""
                     else:
@@ -843,9 +688,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                     
                     # Color coding for rows
                     if row_data["Type"] == "Projected":
-                        cell.fill = PatternFill("solid", fgColor="D1CFCF")  # Light grey
+                        cell.fill = PatternFill("solid", fgColor="D1CFCF")
                     elif row_data["Type"] == "Actual":
-                        cell.fill = PatternFill("solid", fgColor="FFFFFF")  # White
+                        cell.fill = PatternFill("solid", fgColor="FFFFFF")
                     elif row_data["Type"] == "Difference":
                         red_green_cols = (
                             "Total HPPD", "CNA HPPD", "RN+LPN HPPD",
@@ -855,16 +700,17 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
                             diff_val = difference_row.get(col_name)
                             if isinstance(diff_val, (int, float)):
                                 if diff_val < 0:
-                                    cell.fill = PatternFill("solid", fgColor="C8E6C9")  # Light green
-                                
+                                    cell.fill = PatternFill("solid", fgColor="C8E6C9")
                                 else:
-                                    cell.fill = PatternFill("solid", fgColor="FFCDD2")  # Light red
+                                    cell.fill = PatternFill("solid", fgColor="FFCDD2")
                             else:
-                                cell.fill = PatternFill("solid", fgColor="FFFACD")  # Light yellow for missing data
+                                cell.fill = PatternFill("solid", fgColor="FFFACD")
                         else:
-                            cell.fill = PatternFill("solid", fgColor="FFFFFF")  # No fill for other columns
+                            cell.fill = PatternFill("solid", fgColor="FFFFFF")
+                    
                     if col_name == "Date":
                         cell.number_format = numbers.FORMAT_DATE_YYYYMMDD2
+                        
                 current_row += 1
 
         current_row += 2
@@ -887,10 +733,9 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     write_section("Good HPPD & Bad Split (3.0<HPPD<3.3, CNA<2.00, RN+LPN>1.20)", group2)
     write_section("Bad HPPD & Bad Split (HPPD>3.3 | HPPD<3.0, CNA<2.00, RN+LPN>1.20)", group3)
 
-    # Set column widths based on pre-calculated widths with extra padding for long headers
+    # Set column widths
     for col_idx, header in enumerate(column_headers, 1):
         col_letter = get_column_letter(col_idx)
-        # Add extra padding (4 characters) to ensure headers never get cut off
         ws.column_dimensions[col_letter].width = column_widths[header] + 4
 
     # Add skipped templates sheet
