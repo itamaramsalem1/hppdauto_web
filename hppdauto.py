@@ -501,6 +501,21 @@ def process_report_file(args):
     if not matched_template_name:
         return None, (filename, f"No matched facility name. Report: '{extract_core_from_report(report_facility)}'")
 
+    # ✅ STEP 3: DEBUG TRACKING
+    if matched_template_name not in comparison_debug_log:
+        comparison_debug_log[matched_template_name] = {
+            "Template Loaded": False,
+            "Census Valid": False,
+            "Report Found": True,
+            "Report Loaded": True,
+            "Compared": False,
+            "Failure Reason": "Template missing"
+        }
+    else:
+        comparison_debug_log[matched_template_name]["Report Found"] = True
+        comparison_debug_log[matched_template_name]["Report Loaded"] = True
+
+
     # Step 9: Package result
     return {
         "filename": filename,
@@ -514,6 +529,7 @@ def process_report_file(args):
         "actual_agency_nurse_pct": agency_percentages['actual_agency_nurse_pct'],
         "actual_agency_total_pct": agency_percentages['actual_agency_total_pct']
     }, None
+comparison_debug_log = {}
 
 def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, output_path, progress_callback=None):
     print("Starting HPPD comparison...")
@@ -544,8 +560,23 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
         for entry, skip_info in results:
             if entry:
                 template_entries.append(entry)
+
+                # DEBUG TRACKING (Step 2)
+                facility = entry["facility"]
+                comparison_debug_log[facility] = {
+                    "Template Loaded": True,
+                    "Census Valid": entry["census"] > 0,
+                    "Report Found": False,
+                    "Report Loaded": False,
+                    "Compared": False,
+                    "Failure Reason": None
+                }
+                if entry["census"] <= 0:
+                    comparison_debug_log[facility]["Failure Reason"] = "Invalid census (0)"
+
             elif skip_info:
                 skipped_templates.append(skip_info)
+
 
     print(f"Processed templates: {len(template_entries)} entries, {len(skipped_templates)} skipped\n")
 
@@ -688,6 +719,7 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
 
         # Build results
         t = candidates[0]
+        comparison_debug_log[t["facility"]]["Compared"] = True
         key = (t["facility"], report_data["report_date"])
         
         # Calculate actual HPPD values
@@ -885,6 +917,21 @@ def run_hppd_comparison_for_date(templates_folder, reports_folder, target_date, 
     ws_skipped_reports.column_dimensions["A"].width = 40
     ws_skipped_reports.column_dimensions["B"].width = 50
     ws_skipped_reports.column_dimensions["C"].width = 20
+
+    # ✅ STEP 5: Write comparison debug log
+    debug_df = pd.DataFrame.from_dict(comparison_debug_log, orient='index')
+    debug_df.index.name = "Facility"
+    debug_df.reset_index(inplace=True)
+
+    ws_debug = wb.create_sheet(title="Comparison Debug Log")
+    ws_debug.append(debug_df.columns.tolist())
+    for row in debug_df.itertuples(index=False):
+        ws_debug.append(list(row))
+
+    # Optional: widen columns for clarity
+    for col_idx, col_name in enumerate(debug_df.columns, 1):
+        col_letter = get_column_letter(col_idx)
+        ws_debug.column_dimensions[col_letter].width = max(15, len(col_name) + 4)
 
     # Save the file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
